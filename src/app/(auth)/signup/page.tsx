@@ -6,51 +6,93 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
-import { auth } from '@/lib/firebase'; // Import Firebase auth
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { auth } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+
+const signupFormSchema = z.object({
+  name: z.string().min(2, 'Full name must be at least 2 characters.'),
+  email: z.string().email('Invalid email address.'),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
+  confirmPassword: z.string().min(6, 'Password must be at least 6 characters.'),
+  role: z.enum(['volunteer', 'admin'], { required_error: 'Please select a role.' }),
+  ngoRegistrationId: z.string().optional(),
+})
+.refine(data => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
+})
+.refine(data => {
+  if (data.role === 'admin' && (!data.ngoRegistrationId || data.ngoRegistrationId.trim().length < 3)) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'NGO Registration ID is required for admin role and must be at least 3 characters.',
+  path: ['ngoRegistrationId'],
+});
+
+type SignupFormValues = z.infer<typeof signupFormSchema>;
 
 export default function SignupPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const form = useForm<SignupFormValues>({
+    resolver: zodResolver(signupFormSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      role: 'volunteer',
+      ngoRegistrationId: '',
+    },
+  });
+
+  const selectedRole = form.watch('role');
+
+  const onSubmit = async (data: SignupFormValues) => {
     setIsLoading(true);
 
-    if (password !== confirmPassword) {
-      toast({
-        title: 'Error',
-        description: 'Passwords do not match.',
-        variant: 'destructive',
-      });
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Update the user's profile with the name
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      
       if (userCredential.user) {
         await updateProfile(userCredential.user, {
-          displayName: name,
+          displayName: data.name,
         });
+
+        // In a real app, you would now create a user document in Firestore
+        // and store their role and (if admin) the NGO ID.
+        // For admins, you'd also trigger a backend process to verify the NGO ID 
+        // and potentially set custom claims.
+        console.log('User signed up:', {
+          uid: userCredential.user.uid,
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          ngoRegistrationId: data.role === 'admin' ? data.ngoRegistrationId : undefined,
+        });
+        
+        // TODO: Create user profile in Firestore here
+        // e.g., await createUserProfileInDb({ uid: userCredential.user.uid, ...data });
       }
       
       toast({
         title: 'Account Created!',
-        description: 'You have successfully signed up.',
+        description: `Welcome ${data.name}! Your account as a ${data.role} has been successfully created.`,
       });
-      // In a real app with Firestore, you'd also create a user profile document here.
-      router.push('/dashboard');
+      router.push('/dashboard'); 
     } catch (error: any) {
       console.error('Error signing up:', error);
       toast({
@@ -64,60 +106,114 @@ export default function SignupPage() {
   };
 
   return (
-    <Card className="shadow-xl">
+    <Card className="shadow-xl w-full max-w-lg">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl font-headline">Join BeachGuardians</CardTitle>
         <CardDescription>Create an account to start making a difference.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
-            <Input 
-              id="name" 
-              type="text" 
-              placeholder="John Doe" 
-              required 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full Name</FormLabel>
+                  <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input 
-              id="email" 
-              type="email" 
-              placeholder="john.doe@example.com" 
-              required 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl><Input type="email" placeholder="john.doe@example.com" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input 
-              id="password" 
-              type="password" 
-              required 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl><Input type="password" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirm-password">Confirm Password</Label>
-            <Input 
-              id="confirm-password" 
-              type="password" 
-              required 
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm Password</FormLabel>
+                  <FormControl><Input type="password" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create Account
-          </Button>
-        </form>
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>I want to sign up as a...</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-1 md:flex-row md:space-y-0 md:space-x-4"
+                    >
+                      <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="volunteer" />
+                        </FormControl>
+                        <FormLabel className="font-normal">
+                          Volunteer
+                        </FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="admin" />
+                        </FormControl>
+                        <FormLabel className="font-normal">
+                          NGO Admin / Event Organizer
+                        </FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {selectedRole === 'admin' && (
+              <FormField
+                control={form.control}
+                name="ngoRegistrationId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>NGO Registration ID</FormLabel>
+                    <FormControl><Input placeholder="Enter your NGO's official ID" {...field} /></FormControl>
+                    <FormDescription>Required for admin/organizer accounts for verification.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Account
+            </Button>
+          </form>
+        </Form>
       </CardContent>
       <CardFooter>
         <div className="text-sm text-muted-foreground mx-auto">
@@ -130,3 +226,4 @@ export default function SignupPage() {
     </Card>
   );
 }
+
