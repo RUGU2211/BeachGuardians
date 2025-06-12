@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import { auth } from '@/lib/firebase'; // Import Firebase auth
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
@@ -37,14 +37,19 @@ export default function SignupPage() {
     }
 
     try {
-      // In a real app, you'd also save the name to Firestore user profile
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Update the user's profile with the name
+      if (userCredential.user) {
+        await updateProfile(userCredential.user, {
+          displayName: name,
+        });
+      }
+      
       toast({
         title: 'Account Created!',
         description: 'You have successfully signed up.',
       });
-      // For now, new users are just mockVolunteers[0] by default
-      // In a real app, you'd create a user profile in Firestore here.
+      // In a real app with Firestore, you'd also create a user profile document here.
       router.push('/dashboard');
     } catch (error: any) {
       console.error('Error signing up:', error);
