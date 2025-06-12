@@ -108,7 +108,7 @@ export default function DashboardPage() {
         <StatCard title="Top Volunteer Points" value={mockVolunteers.reduce((max, v) => Math.max(max, v.points), 0)} icon={Award} description="Highest score on leaderboard" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
+      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-5">
         <ImpactChart
           title="Monthly Activity Overview"
           description="Waste collected and volunteer participation over the past months."
@@ -118,10 +118,10 @@ export default function DashboardPage() {
             { name: 'wasteCollected', colorVar: 'hsl(var(--chart-1))' },
             { name: 'volunteers', colorVar: 'hsl(var(--chart-2))' },
           ]}
-          className="lg:col-span-4"
+          className="lg:col-span-3"
         />
         
-        <Card className="lg:col-span-3">
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-headline flex items-center"><CalendarCheck2 className="mr-2 h-6 w-6 text-primary" />Upcoming Events</CardTitle>
             <CardDescription>Quick look at the next few cleanups.</CardDescription>
