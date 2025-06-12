@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
-import { generateHeroImage } from '@/ai/flows/generate-hero-image-flow';
+// Removed: import { generateHeroImage } from '@/ai/flows/generate-hero-image-flow';
 
 function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -40,19 +40,19 @@ function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
 
 
 export default async function HomePage() {
-  let heroImageUrl = "https://placehold.co/600x400.png";
-  const heroImageHint = "beach cleanup"; 
+  // Use a static placeholder representing the user's image.
+  const heroImageUrl = "https://placehold.co/600x400.png"; 
+  const heroImageHint = "volunteers cleaning beach"; // Updated hint
 
-  try {
-    // Generate the image on the server when the page is requested
-    const imageResult = await generateHeroImage({ prompt: heroImageHint });
-    if (imageResult.imageDataUri) {
-      heroImageUrl = imageResult.imageDataUri;
-    }
-  } catch (error) {
-    console.error("Failed to generate hero image for landing page:", error);
-    // heroImageUrl remains the placeholder
-  }
+  // Removed AI image generation call for this specific hero image
+  // try {
+  //   const imageResult = await generateHeroImage({ prompt: "volunteers cleaning beach" }); // Or a more specific prompt from the image
+  //   if (imageResult.imageDataUri) {
+  //     heroImageUrl = imageResult.imageDataUri;
+  //   }
+  // } catch (error) {
+  //   console.error("Failed to generate hero image for landing page:", error);
+  // }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -113,7 +113,7 @@ export default async function HomePage() {
                 src={heroImageUrl}
                 width="600"
                 height="400"
-                alt="Hero image depicting a beach cleanup or pristine beach"
+                alt="Hero image depicting volunteers cleaning a beach"
                 data-ai-hint={heroImageHint}
                 className="mx-auto aspect-[3/2] overflow-hidden rounded-xl object-cover sm:w-full lg:order-last"
                 priority
