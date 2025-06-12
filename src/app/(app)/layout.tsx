@@ -1,7 +1,8 @@
+
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -15,7 +16,10 @@ import {
 import { Header } from '@/components/layout/Header';
 import { SidebarNavItems } from '@/components/layout/SidebarNavItems';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { LogOut, Loader2 } from 'lucide-react';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { auth } from '@/lib/firebase'; // Import auth for signOut
+import { useToast } from '@/hooks/use-toast';
 
 function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -51,14 +55,18 @@ function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { currentUser, loading } = useAuth();
+  const { toast } = useToast();
   const [pageTitle, setPageTitle] = useState('Dashboard');
-  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
-  }, []);
+    if (!loading && !currentUser) {
+      router.push('/login');
+    }
+  }, [currentUser, loading, router]);
 
   useEffect(() => {
     const segments = pathname.split('/').filter(Boolean);
@@ -77,7 +85,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [pathname]);
 
-  if (!isClient) {
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast({ title: 'Logout Failed', description: 'Could not log out. Please try again.', variant: 'destructive' });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    // This will be briefly shown before redirect, or if redirect fails for some reason
     return null; 
   }
 
@@ -94,11 +122,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <SidebarNavItems />
         </SidebarContent>
         <SidebarFooter>
-          <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center" asChild>
-            <Link href="/login">
-              <LogOut className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
-              <span className="group-data-[collapsible=icon]:hidden">Logout</span>
-            </Link>
+          <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
+            <span className="group-data-[collapsible=icon]:hidden">Logout</span>
           </Button>
         </SidebarFooter>
         <SidebarRail />
@@ -110,5 +136,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </AuthProvider>
   );
 }

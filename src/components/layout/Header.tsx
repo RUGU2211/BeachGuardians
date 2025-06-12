@@ -14,8 +14,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, Sun, Moon, LogOut, UserCircle, Settings } from 'lucide-react';
-// Removed: import { useSidebar } from '@/components/ui/sidebar'; 
+import { Menu, Sun, Moon, LogOut, UserCircle, SettingsIcon, Loader2 } from 'lucide-react'; // Renamed Settings to SettingsIcon to avoid conflict
+import { useAuth } from '@/context/AuthContext';
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
+import { SidebarNavItems } from './SidebarNavItems'; // For mobile sheet
 
 interface HeaderProps {
   title: string;
@@ -56,8 +60,10 @@ function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 export function Header({ title }: HeaderProps) {
-  const user = { name: 'Demo User', email: 'user@beachguardians.app', avatar: 'https://placehold.co/40x40.png' };
-  const initials = user.name.split(' ').map(n => n[0]).join('');
+  const { currentUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+  
   const [theme, setTheme] = useState('light');
   const [isClient, setIsClient] = useState(false);
 
@@ -67,14 +73,13 @@ export function Header({ title }: HeaderProps) {
     if (savedTheme) {
       setTheme(savedTheme);
     } else {
-      // Default to light if no preference or system preference is not dark
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       setTheme(prefersDark ? 'dark' : 'light');
     }
   }, []);
 
   useEffect(() => {
-    if (!isClient) return;
+    if (!isClient) return; // Ensure this only runs client-side
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -88,15 +93,30 @@ export function Header({ title }: HeaderProps) {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  if (!isClient) {
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
+      router.push('/login'); // router should be available from useRouter
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast({ title: 'Logout Failed', description: 'Could not log out. Please try again.', variant: 'destructive' });
+    }
+  };
+
+  const userInitials = currentUser?.displayName?.split(' ').map(n => n[0]).join('') || currentUser?.email?.charAt(0).toUpperCase() || 'U';
+  const userDisplayName = currentUser?.displayName || currentUser?.email || 'User';
+
+  if (!isClient) { // Or use authLoading to determine placeholder rendering
     return (
       <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
-        {/* Basic header for SSR or pre-hydration to avoid layout shift */}
-         <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
+        <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
+         <div className="ml-auto flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+        </div>
       </header>
     );
   }
-
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
@@ -108,15 +128,16 @@ export function Header({ title }: HeaderProps) {
               <span className="sr-only">Toggle navigation menu</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0">
-            <nav className="grid gap-2 text-lg font-medium p-4">
-              <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold">
-                <BeachGuardiansIcon className="h-6 w-6 text-primary" />
-                <span className="sr-only">BeachGuardians</span>
+          <SheetContent side="left" className="p-0 flex flex-col">
+            <div className="p-4 border-b">
+              <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold font-headline">
+                <BeachGuardiansIcon className="h-7 w-7 text-primary" />
+                <span>BeachGuardians</span>
               </Link>
-              <Link href="/dashboard" className="hover:text-foreground">Dashboard</Link>
-              <Link href="/events" className="text-muted-foreground hover:text-foreground">Events</Link>
-            </nav>
+            </div>
+            <div className="flex-grow overflow-y-auto">
+                <SidebarNavItems />
+            </div>
           </SheetContent>
         </Sheet>
       </div>
@@ -128,30 +149,38 @@ export function Header({ title }: HeaderProps) {
             <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar} alt={user.name} data-ai-hint="person avatar" />
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/profile"><UserCircle className="mr-2 h-4 w-4" />Profile</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings"><Settings className="mr-2 h-4 w-4" />Settings</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/login"><LogOut className="mr-2 h-4 w-4" />Logout</Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {authLoading ? (
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          ) : currentUser ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={currentUser.photoURL || `https://placehold.co/40x40.png?text=${userInitials}`} alt={userDisplayName} data-ai-hint="person avatar"/>
+                    <AvatarFallback>{userInitials}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{userDisplayName}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/profile"><UserCircle className="mr-2 h-4 w-4" />Profile</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings"><SettingsIcon className="mr-2 h-4 w-4" />Settings</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+             <Button asChild variant="outline">
+                <Link href="/login">Login</Link>
+             </Button>
+          )}
         </div>
       </div>
     </header>
