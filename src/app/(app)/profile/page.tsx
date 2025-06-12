@@ -1,23 +1,32 @@
+
 'use client';
 
+import React, { useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { mockVolunteers, mockAchievements, mockWasteLogs } from '@/lib/mockData'; // Use specific volunteer
+import { mockVolunteers } from '@/lib/mockData'; 
 import { BadgeDisplay } from '@/components/gamification/BadgeDisplay';
-import { Award, Edit3, Gift, Mail, Recycle, ShieldAlert, Star, Trash2, Users } from 'lucide-react';
+import { Award, Edit3, Gift, Mail, Recycle, ShieldAlert, Star, Trash2, Users, FileText, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import type { Contribution } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { generateCertificateText } from '@/ai/flows/generate-certificate-text-flow';
 
-// Assume we have a way to get the current logged-in volunteer's ID
-// For now, let's pick the first volunteer from mock data
 const currentVolunteer = mockVolunteers[0]; 
 
 export default function ProfilePage() {
+  const { toast } = useToast();
+  const [generatedCertificateText, setGeneratedCertificateText] = useState<string | null>(null);
+  const [isGeneratingCertificate, setIsGeneratingCertificate] = useState(false);
+  const [certificateForEvent, setCertificateForEvent] = useState<string | null>(null);
+
+
   if (!currentVolunteer) {
-    return <div>Loading profile...</div>; // Or a proper error/loading state
+    return <div>Loading profile...</div>; 
   }
 
   const totalWasteLogged = currentVolunteer.contributions.reduce((total, contribution) => {
@@ -25,11 +34,39 @@ export default function ProfilePage() {
   }, 0);
 
   const eventsAttendedCount = currentVolunteer.contributions.length;
-
-  // Gamification example: next level
   const pointsToNextLevel = 1500;
   const progressToNextLevel = Math.min((currentVolunteer.points / pointsToNextLevel) * 100, 100);
 
+  const latestContribution = currentVolunteer.contributions.length > 0 
+    ? [...currentVolunteer.contributions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] 
+    : null;
+
+  const handleGenerateCertificate = async (contribution: Contribution) => {
+    setIsGeneratingCertificate(true);
+    setGeneratedCertificateText(null);
+    setCertificateForEvent(contribution.eventName);
+    try {
+      const result = await generateCertificateText({
+        volunteerName: currentVolunteer.name,
+        eventName: contribution.eventName,
+        eventDate: new Date(contribution.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      });
+      setGeneratedCertificateText(result.certificateText);
+      toast({
+        title: "Certificate Text Generated!",
+        description: `Text for ${contribution.eventName} is ready.`,
+      });
+    } catch (error) {
+      console.error("Error generating certificate text:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate certificate text. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingCertificate(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -93,13 +130,24 @@ export default function ProfilePage() {
             <h3 className="text-xl font-semibold mb-3 font-headline">Contribution History</h3>
             {currentVolunteer.contributions.length > 0 ? (
               <ul className="space-y-4">
-                {currentVolunteer.contributions.map((contrib, index) => (
-                  <li key={index} className="p-4 border rounded-lg hover:shadow-sm transition-shadow">
+                {currentVolunteer.contributions.slice(0,3).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((contrib) => (
+                  <li key={contrib.eventId} className="p-4 border rounded-lg hover:shadow-sm transition-shadow">
                     <div className="flex justify-between items-center">
-                      <Link href={`/events/${contrib.eventId}`} className="font-medium text-primary hover:underline">
-                        {contrib.eventName}
-                      </Link>
-                      <span className="text-sm text-muted-foreground">{new Date(contrib.date).toLocaleDateString()}</span>
+                        <div>
+                            <Link href={`/events/${contrib.eventId}`} className="font-medium text-primary hover:underline">
+                                {contrib.eventName}
+                            </Link>
+                            <p className="text-sm text-muted-foreground">{new Date(contrib.date).toLocaleDateString()}</p>
+                        </div>
+                         <Button 
+                            variant="secondary" 
+                            size="sm"
+                            onClick={() => handleGenerateCertificate(contrib)} 
+                            disabled={isGeneratingCertificate && certificateForEvent === contrib.eventName}
+                        >
+                            {isGeneratingCertificate && certificateForEvent === contrib.eventName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                            Generate Certificate Text
+                        </Button>
                     </div>
                     {contrib.wasteLogged.length > 0 && (
                       <ul className="mt-2 text-sm list-disc list-inside pl-2 text-muted-foreground">
@@ -118,13 +166,31 @@ export default function ProfilePage() {
            <Separator className="my-6" />
             <div>
                 <h3 className="text-xl font-semibold mb-3 font-headline">Digital Certificates</h3>
-                <p className="text-muted-foreground mb-2">View and download your certificates of participation and achievement.</p>
-                {/* Placeholder for certificate list */}
-                <div className="p-4 border rounded-lg bg-muted/30 text-center">
-                    <ShieldAlert className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Certificate generation feature coming soon!</p>
-                     <Button variant="secondary" className="mt-2" disabled>Download Example Certificate</Button>
-                </div>
+                <p className="text-muted-foreground mb-2">Generate commemorative text for your event participation.</p>
+                {latestContribution && !generatedCertificateText && !isGeneratingCertificate && (
+                     <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                        <ShieldAlert className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                            You can generate certificate text for events listed in your contribution history above.
+                        </p>
+                    </div>
+                )}
+                 {isGeneratingCertificate && (
+                  <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                    <Loader2 className="h-10 w-10 text-primary mx-auto mb-2 animate-spin" />
+                    <p className="text-sm text-muted-foreground">Generating certificate text for {certificateForEvent}...</p>
+                  </div>
+                )}
+                {generatedCertificateText && certificateForEvent && (
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle className="font-headline text-lg">Certificate for {certificateForEvent}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Textarea value={generatedCertificateText} readOnly rows={10} className="bg-muted/50 whitespace-pre-wrap" />
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </CardContent>
       </Card>

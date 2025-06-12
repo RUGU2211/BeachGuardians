@@ -1,8 +1,11 @@
 
-'use client';
+'use client'; // This page now has client-side interactions for potential AI image refresh, keeping it client for now.
+// If AI image is fetched on server, this could be a server component, but let's manage state for potential refresh/errors client-side.
+
+import React, { useState, useEffect } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ImpactChart } from '@/components/dashboard/ImpactChart';
-import { Users, Trash2, CalendarCheck2, Award, History, ListChecks } from 'lucide-react';
+import { Users, Trash2, CalendarCheck2, Award, History, ListChecks, Loader2 } from 'lucide-react';
 import type { ChartConfig } from '@/components/ui/chart';
 import { mockEvents, mockVolunteers, mockWasteLogs, getEventById, getVolunteerById } from '@/lib/mockData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -12,6 +15,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { generateHeatmapImage } from '@/ai/flows/generate-heatmap-image-flow';
+import { useToast } from '@/hooks/use-toast';
 
 const chartConfig = {
   wasteCollected: { label: 'Waste (kg)', color: 'hsl(var(--chart-1))' },
@@ -33,7 +38,7 @@ const generateMonthlyData = () => {
     const activeVolunteersThisMonth = new Set<string>();
 
     mockWasteLogs.forEach(log => {
-      const logDate = parseISO(log.date); // Assuming log.date is ISO string
+      const logDate = parseISO(log.date);
       if (isWithinInterval(logDate, { start, end })) {
         wasteCollectedThisMonth += log.weightKg;
         activeVolunteersThisMonth.add(log.loggedBy);
@@ -41,23 +46,22 @@ const generateMonthlyData = () => {
     });
 
     mockEvents.forEach(event => {
-      const eventDate = parseISO(event.date); // Assuming event.date is ISO string
+      const eventDate = parseISO(event.date);
       if (isWithinInterval(eventDate, { start, end })) {
-        if(event.status === 'completed' || event.status === 'ongoing'){ // Count volunteers for completed or ongoing events in the month
+        if(event.status === 'completed' || event.status === 'ongoing'){
             event.volunteers.forEach(volId => activeVolunteersThisMonth.add(volId));
         }
       }
     });
 
     return {
-      name: monthAbbreviation, // For XAxis (e.g., "Jun")
-      fullName: `${monthName} ${year}`, // For tooltip or other displays
+      name: monthAbbreviation,
+      fullName: `${monthName} ${year}`,
       wasteCollected: parseFloat(wasteCollectedThisMonth.toFixed(1)),
       volunteers: activeVolunteersThisMonth.size,
     };
-  }).reverse(); // Reverse to have oldest month first for chart progression
+  }).reverse(); 
 
-  // If there's no data for the current month yet, ensure it's present with 0 values
   const currentMonthAbbrev = format(today, 'MMM');
   if (!data.find(d => d.name === currentMonthAbbrev && d.fullName.endsWith(today.getFullYear().toString()))) {
     data.push({
@@ -66,15 +70,38 @@ const generateMonthlyData = () => {
         wasteCollected: 0,
         volunteers: 0,
     });
-    if(data.length > A_FEW_MONTHS) data.shift(); // Keep it to A_FEW_MONTHS
+    if(data.length > A_FEW_MONTHS) data.shift();
   }
-
-
   return data;
 };
 
 
 export default function DashboardPage() {
+  const { toast } = useToast();
+  const [heatmapImageUrl, setHeatmapImageUrl] = useState("https://placehold.co/800x400.png");
+  const [isHeatmapLoading, setIsHeatmapLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchHeatmapImage() {
+      setIsHeatmapLoading(true);
+      try {
+        const result = await generateHeatmapImage({ prompt: "Conceptual heatmap of coastal cleanup volunteer activity density, showing areas of high and low engagement across various coastal regions." });
+        setHeatmapImageUrl(result.imageDataUri);
+      } catch (error) {
+        console.error("Failed to generate heatmap image:", error);
+        toast({
+          title: "Heatmap Generation Failed",
+          description: "Could not generate AI heatmap. Using a default placeholder.",
+          variant: "destructive",
+        });
+        setHeatmapImageUrl("https://placehold.co/800x400.png?text=Heatmap+Error");
+      } finally {
+        setIsHeatmapLoading(false);
+      }
+    }
+    fetchHeatmapImage();
+  }, [toast]);
+
   const totalWasteCollected = mockWasteLogs.reduce((sum, log) => sum + log.weightKg, 0);
   const totalVolunteers = mockVolunteers.length;
   const totalEvents = mockEvents.length;
@@ -204,15 +231,28 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">Cleanup Heatmap (Conceptual)</CardTitle>
-          <CardDescription>Visualization of areas with most cleanup activity and reported waste.</CardDescription>
+          <CardTitle className="font-headline">AI Generated Cleanup Heatmap</CardTitle>
+          <CardDescription>Conceptual visualization of areas with most cleanup activity and reported waste, generated by AI.</CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center items-center h-64 bg-muted/30 rounded-md">
-          <Image src="https://placehold.co/800x400.png" alt="Cleanup Heatmap Placeholder" data-ai-hint="map pollution" width={800} height={400} className="object-contain" />
+          {isHeatmapLoading ? (
+            <div className="flex flex-col items-center">
+              <Loader2 className="h-12 w-12 text-primary animate-spin mb-2" />
+              <p className="text-muted-foreground">Generating Heatmap Image...</p>
+            </div>
+          ) : (
+            <Image 
+              src={heatmapImageUrl} 
+              alt="AI Generated Cleanup Heatmap" 
+              data-ai-hint="abstract map" 
+              width={800} 
+              height={400} 
+              className="object-contain max-h-full max-w-full" 
+            />
+          )}
         </CardContent>
       </Card>
 
     </div>
   );
 }
-
