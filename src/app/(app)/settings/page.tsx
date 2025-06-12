@@ -11,18 +11,17 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { mockVolunteers, getVolunteerById } from '@/lib/mockData'; // Assuming mock data for user
+import { mockVolunteers, getVolunteerById } from '@/lib/mockData'; 
 import { Loader2, Palette, User, Bell } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Simulate fetching/using current user's ID (using the first volunteer for demo)
 const currentVolunteerId = mockVolunteers[0]?.id;
 
 const settingsFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email().optional(), // Email might be read-only
+  email: z.string().email().optional(),
   enableEmailNotifications: z.boolean().default(false),
-  theme: z.string().optional(), // 'light', 'dark', or 'system'
+  theme: z.string().default('light'), 
 });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -30,39 +29,47 @@ type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 export default function SettingsPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [initialTheme, setInitialTheme] = useState('light');
+  // Removed initialTheme state, form will manage theme value
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: async () => {
-      // In a real app, fetch user settings here
-      const volunteer = getVolunteerById(currentVolunteerId);
-      return {
-        name: volunteer?.name || '',
-        email: volunteer?.email || '', // Display only
-        enableEmailNotifications: false, // Default
-        theme: 'light', // Default, will be updated by useEffect
-      };
+    defaultValues: { // Synchronous default values
+      name: '',
+      email: '',
+      enableEmailNotifications: false,
+      theme: 'light', // Default theme, localStorage will override in useEffect
     },
   });
 
+  // Effect to load user-specific data and persisted theme from localStorage
   useEffect(() => {
     const volunteer = getVolunteerById(currentVolunteerId);
+    const lsTheme = localStorage.getItem('theme') || 'light';
+
+    let resetValues: SettingsFormValues = {
+      name: '',
+      email: '',
+      enableEmailNotifications: false, // Default, can be overridden by volunteer data if available
+      theme: lsTheme,
+    };
+
     if (volunteer) {
-      form.reset({
-        name: volunteer.name,
-        email: volunteer.email,
-        enableEmailNotifications: form.getValues('enableEmailNotifications') || false, // Persist if already set by form
-        theme: localStorage.getItem('theme') || 'light',
-      });
+      resetValues.name = volunteer.name || '';
+      resetValues.email = volunteer.email || '';
+      // If you store notification preferences on the volunteer object, load them here:
+      // resetValues.enableEmailNotifications = volunteer.preferences?.emailNotifications ?? false;
     }
-    setInitialTheme(localStorage.getItem('theme') || 'light');
-  }, [form]);
-  
+    
+    form.reset(resetValues);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount to initialize form with potentially persisted data
+
+  const currentTheme = form.watch('theme');
+
+  // Effect to apply theme to document and save to localStorage
   useEffect(() => {
-    const currentTheme = form.watch('theme');
-    if (currentTheme) {
-       if (currentTheme === 'dark') {
+    if (currentTheme) { 
+      if (currentTheme === 'dark') {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
       } else {
@@ -70,20 +77,19 @@ export default function SettingsPage() {
         localStorage.setItem('theme', 'light');
       }
     }
-  }, [form.watch('theme')]);
+  }, [currentTheme]); // Re-run only when currentTheme (from form state) changes
 
 
   const onSubmit = async (data: SettingsFormValues) => {
     setIsLoading(true);
     console.log("Settings data submitted:", data);
 
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Update mock data (name only for this example)
     const volunteer = getVolunteerById(currentVolunteerId);
     if (volunteer) {
       volunteer.name = data.name;
+      // In a real app, save other settings like data.enableEmailNotifications
     }
 
     toast({
@@ -136,12 +142,12 @@ export default function SettingsPage() {
                    <FormField
                     control={form.control}
                     name="theme"
-                    render={({ field }) => (
+                    render={({ field }) => ( // field.value will be initialized by defaultValues or form.reset
                       <FormItem>
                         <FormLabel>Theme</FormLabel>
                         <Select 
                           onValueChange={field.onChange} 
-                          defaultValue={field.value || initialTheme}
+                          value={field.value} // Use value, it's controlled by RHF
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -151,7 +157,6 @@ export default function SettingsPage() {
                           <SelectContent>
                             <SelectItem value="light">Light</SelectItem>
                             <SelectItem value="dark">Dark</SelectItem>
-                            {/* <SelectItem value="system">System Default</SelectItem> */}
                           </SelectContent>
                         </Select>
                         <FormDescription>Choose your preferred interface theme.</FormDescription>
