@@ -1,3 +1,7 @@
+
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -11,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Menu, Sun, Moon, LogOut, UserCircle, Settings } from 'lucide-react';
-import { useSidebar } from '@/components/ui/sidebar'; 
+// Removed: import { useSidebar } from '@/components/ui/sidebar'; 
 
 interface HeaderProps {
   title: string;
@@ -54,6 +58,33 @@ function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
 export function Header({ title }: HeaderProps) {
   const user = { name: 'Demo User', email: 'user@beachguardians.app', avatar: 'https://placehold.co/40x40.png' };
   const initials = user.name.split(' ').map(n => n[0]).join('');
+  const [theme, setTheme] = useState('light');
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else {
+      // Default to light if no preference or system preference is not dark
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(prefersDark ? 'dark' : 'light');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
+  };
+
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
@@ -81,7 +112,7 @@ export function Header({ title }: HeaderProps) {
       <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
         <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="icon" aria-label="Toggle theme">
+          <Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={toggleTheme}>
             <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </Button>
