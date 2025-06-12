@@ -152,7 +152,7 @@ export default function DashboardPage() {
         </Card>
       </div>
       
-      <Card className="lg:col-span-7">
+      <Card>
         <CardHeader>
           <CardTitle className="font-headline flex items-center"><History className="mr-2 h-6 w-6 text-primary" />Recent Waste Logs</CardTitle>
           <CardDescription>Latest waste collection entries by volunteers.</CardDescription>
@@ -202,7 +202,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-7">
+      <Card>
         <CardHeader>
           <CardTitle className="font-headline">Cleanup Heatmap (Conceptual)</CardTitle>
           <CardDescription>Visualization of areas with most cleanup activity and reported waste.</CardDescription>
