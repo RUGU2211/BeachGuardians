@@ -1,6 +1,8 @@
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { generateHeroImage } from '@/ai/flows/generate-hero-image-flow';
 
 function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -37,7 +39,21 @@ function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 
-export default function HomePage() {
+export default async function HomePage() {
+  let heroImageUrl = "https://placehold.co/600x400.png";
+  const heroImageHint = "beach cleanup"; 
+
+  try {
+    // Generate the image on the server when the page is requested
+    const imageResult = await generateHeroImage({ prompt: heroImageHint });
+    if (imageResult.imageDataUri) {
+      heroImageUrl = imageResult.imageDataUri;
+    }
+  } catch (error) {
+    console.error("Failed to generate hero image for landing page:", error);
+    // heroImageUrl remains the placeholder
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="px-4 lg:px-6 h-16 flex items-center border-b">
@@ -94,12 +110,13 @@ export default function HomePage() {
                 </div>
               </div>
               <Image
-                src="https://placehold.co/600x400.png"
+                src={heroImageUrl}
                 width="600"
                 height="400"
-                alt="Hero"
-                data-ai-hint="beach cleanup"
+                alt="Hero image depicting a beach cleanup or pristine beach"
+                data-ai-hint={heroImageHint}
                 className="mx-auto aspect-[3/2] overflow-hidden rounded-xl object-cover sm:w-full lg:order-last"
+                priority
               />
             </div>
           </div>
