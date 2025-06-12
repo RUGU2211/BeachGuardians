@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Shoreline - Clean Coasts, Clear Future',
-  description: 'Join Shoreline to help clean our coasts and track our collective impact.',
+  title: 'BeachGuardians - Clean Coasts, Clear Future',
+  description: 'Join BeachGuardians to help clean our coasts and track our collective impact.',
 };
 
 export default function RootLayout({
