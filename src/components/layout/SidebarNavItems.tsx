@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -14,6 +15,7 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
+  Settings, // Added Settings icon
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -32,17 +34,28 @@ const navItems = [
   { href: '/profile', label: 'My Profile', icon: User },
   { href: '/waste-logging', label: 'Waste Logging', icon: Trash2 },
   { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
+  { href: '/settings', label: 'Settings', icon: Settings }, // Added Settings item
 ];
 
 const adminNavItems = [
   { href: '/admin/ai-content', label: 'AI Content Generator', icon: Sparkles },
-  { href: '/admin/event-summary', label: 'AI Event Summaries', icon: Send }, // Using Send as placeholder
+  { href: '/admin/event-summary', label: 'AI Event Summaries', icon: Send }, 
   { href: '/admin/engagement-tool', label: 'AI Engagement Messages', icon: MessageSquareHeart },
 ];
 
 export function SidebarNavItems() {
   const pathname = usePathname();
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+
+  // Determine if any admin sub-item is active to keep the main Admin Tools item highlighted
+  const isAdminSectionActive = adminNavItems.some(item => pathname.startsWith(item.href));
+  // Open admin dropdown if an admin page is active
+  React.useEffect(() => {
+    if (isAdminSectionActive) {
+      setIsAdminOpen(true);
+    }
+  }, [isAdminSectionActive]);
+
 
   return (
     <SidebarMenu>
@@ -62,7 +75,11 @@ export function SidebarNavItems() {
       ))}
 
       <SidebarMenuItem>
-        <SidebarMenuButton onClick={() => setIsAdminOpen(!isAdminOpen)} tooltip={{children: "Admin Tools", className: 'bg-primary text-primary-foreground' }}>
+        <SidebarMenuButton 
+            onClick={() => setIsAdminOpen(!isAdminOpen)} 
+            tooltip={{children: "Admin Tools", className: 'bg-primary text-primary-foreground' }}
+            isActive={isAdminSectionActive} // Highlight if any admin sub-item is active
+        >
           <ShieldCheck />
           <span>Admin Tools</span>
           {isAdminOpen ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
@@ -73,7 +90,7 @@ export function SidebarNavItems() {
               <SidebarMenuSubItem key={item.label}>
                 <SidebarMenuSubButton
                   asChild
-                  isActive={pathname === item.href}
+                  isActive={pathname === item.href || pathname.startsWith(item.href)}
                 >
                   <Link href={item.href}>
                     <item.icon />

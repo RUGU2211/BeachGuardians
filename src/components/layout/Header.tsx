@@ -59,8 +59,10 @@ export function Header({ title }: HeaderProps) {
   const user = { name: 'Demo User', email: 'user@beachguardians.app', avatar: 'https://placehold.co/40x40.png' };
   const initials = user.name.split(' ').map(n => n[0]).join('');
   const [theme, setTheme] = useState('light');
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
       setTheme(savedTheme);
@@ -72,6 +74,7 @@ export function Header({ title }: HeaderProps) {
   }, []);
 
   useEffect(() => {
+    if (!isClient) return;
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -79,11 +82,20 @@ export function Header({ title }: HeaderProps) {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
-  }, [theme]);
+  }, [theme, isClient]);
 
   const toggleTheme = () => {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
+
+  if (!isClient) {
+    return (
+      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
+        {/* Basic header for SSR or pre-hydration to avoid layout shift */}
+         <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
+      </header>
+    );
+  }
 
 
   return (
@@ -131,7 +143,9 @@ export function Header({ title }: HeaderProps) {
               <DropdownMenuItem asChild>
                 <Link href="/profile"><UserCircle className="mr-2 h-4 w-4" />Profile</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem disabled><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings"><Settings className="mr-2 h-4 w-4" />Settings</Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/login"><LogOut className="mr-2 h-4 w-4" />Logout</Link>
