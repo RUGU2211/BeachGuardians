@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,11 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { generateEventImage } from '@/ai/flows/generate-event-image-flow';
+import { mockEvents } from '@/lib/mockData'; // To add the new event to mock data
+import type { Event } from '@/lib/types';
+import React from 'react';
 
 const eventFormSchema = z.object({
   name: z.string().min(3, { message: 'Event name must be at least 3 characters.' }),
@@ -28,33 +33,77 @@ const eventFormSchema = z.object({
 
 type EventFormValues = z.infer<typeof eventFormSchema>;
 
-// Default values for the form
 const defaultValues: Partial<EventFormValues> = {
   name: '',
   time: '09:00 - 12:00',
   location: '',
   description: '',
-  organizer: 'Shoreline Community',
+  organizer: 'BeachGuardians Community',
 };
 
 export function EventForm() {
   const router = useRouter();
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventFormSchema),
     defaultValues,
     mode: 'onChange',
   });
 
-  function onSubmit(data: EventFormValues) {
-    console.log('Event data submitted:', data);
-    // Here you would typically send data to your backend
-    // For now, we'll just show a toast and redirect
+  async function onSubmit(data: EventFormValues) {
+    setIsSubmitting(true);
+    let eventImageUrl = "https://placehold.co/600x400.png"; // Default placeholder
+
+    try {
+      toast({
+        title: "Generating Event Image...",
+        description: "Please wait while we create a unique image for your event.",
+      });
+      const imageResult = await generateEventImage({
+        eventName: data.name,
+        eventDescription: data.description,
+      });
+      eventImageUrl = imageResult.imageDataUri;
+      toast({
+        title: "Image Generated!",
+        description: "AI image created successfully.",
+      });
+    } catch (error) {
+      console.error('Error generating event image:', error);
+      toast({
+        title: "Image Generation Failed",
+        description: "Could not generate an AI image. Using a default placeholder.",
+        variant: "destructive",
+      });
+    }
+
+    const newEvent: Event = {
+      id: `evt${Date.now()}`, // Simple unique ID for mock data
+      name: data.name,
+      date: data.date.toISOString(),
+      time: data.time,
+      location: data.location,
+      description: data.description,
+      organizer: data.organizer,
+      volunteers: [], // New event starts with no volunteers
+      mapImageUrl: eventImageUrl, // Use generated or placeholder image
+      status: 'upcoming',
+      wasteCollectedKg: 0,
+    };
+
+    // Add to mockEvents array (for demonstration purposes)
+    // In a real app, this would be an API call to save to a database.
+    mockEvents.unshift(newEvent);
+
     toast({
       title: "Event Created!",
-      description: `${data.name} has been successfully scheduled.`,
+      description: `${newEvent.name} has been successfully scheduled.`,
     });
-    router.push('/events'); // Redirect to events list page
+    
+    router.push('/events');
+    setIsSubmitting(false);
   }
 
   return (
@@ -102,7 +151,7 @@ export function EventForm() {
                       mode="single"
                       selected={field.value}
                       onSelect={field.onChange}
-                      disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                      disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                       initialFocus
                     />
                   </PopoverContent>
@@ -170,7 +219,7 @@ export function EventForm() {
             <FormItem>
               <FormLabel>Organizer Name</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Shoreline Community Leaders" {...field} />
+                <Input placeholder="e.g., BeachGuardians Community Leaders" {...field} />
               </FormControl>
               <FormDescription>Name of the person or group organizing this event.</FormDescription>
               <FormMessage />
@@ -178,7 +227,10 @@ export function EventForm() {
           )}
         />
 
-        <Button type="submit" size="lg">Create Event</Button>
+        <Button type="submit" size="lg" disabled={isSubmitting}>
+          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isSubmitting ? 'Creating Event...' : 'Create Event & Generate Image'}
+        </Button>
       </form>
     </Form>
   );
