@@ -26,7 +26,7 @@ import {
   SidebarMenuSubButton,
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -37,15 +37,16 @@ const navItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
+// In a real app, this would come from your authentication and user profile data (e.g., Firestore + custom claims)
+// For now, we simulate it. This should be updated when full role management is in place.
+const IS_CURRENT_USER_ADMIN = true; 
+
 const adminNavItems = [
   { href: '/admin/ai-content', label: 'AI Content Generator', icon: Sparkles },
   { href: '/admin/event-summary', label: 'AI Event Summaries', icon: Send }, 
   { href: '/admin/engagement-tool', label: 'AI Engagement Messages', icon: MessageSquareHeart },
 ];
 
-// Placeholder for actual user role check
-// In a real app, this would come from your authentication and user profile data
-const IS_CURRENT_USER_ADMIN = true; // TODO: Replace with actual role check from user data
 
 export function SidebarNavItems() {
   const pathname = usePathname();
@@ -53,11 +54,12 @@ export function SidebarNavItems() {
 
   const isAdminSectionActive = adminNavItems.some(item => pathname.startsWith(item.href));
   
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAdminSectionActive && IS_CURRENT_USER_ADMIN) {
       setIsAdminOpen(true);
     }
-  }, [isAdminSectionActive]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdminSectionActive]); // Removed IS_CURRENT_USER_ADMIN from deps as it's a constant here
 
 
   return (
@@ -77,7 +79,7 @@ export function SidebarNavItems() {
         </SidebarMenuItem>
       ))}
 
-      {IS_CURRENT_USER_ADMIN && ( // Conditionally render Admin Tools
+      {IS_CURRENT_USER_ADMIN && ( 
         <SidebarMenuItem>
           <SidebarMenuButton 
               onClick={() => setIsAdminOpen(!isAdminOpen)} 
