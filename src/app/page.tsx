@@ -129,20 +129,20 @@ export default async function HomePage() {
                 </p>
               </div>
             </div>
-            <div className="mx-auto grid max-w-5xl items-start gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 pt-12">
-              <div className="grid gap-1 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+            <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 pt-12">
+              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
                 <h3 className="text-lg font-bold font-headline">Event Management</h3>
                 <p className="text-sm text-muted-foreground">
                   Discover and join local cleanup events. Organizers can easily create and manage events.
                 </p>
               </div>
-              <div className="grid gap-1 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
                 <h3 className="text-lg font-bold font-headline">Impact Tracking</h3>
                 <p className="text-sm text-muted-foreground">
                   Log the type and amount of waste collected. See real-time statistics and our collective impact.
                 </p>
               </div>
-              <div className="grid gap-1 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
                 <h3 className="text-lg font-bold font-headline">Gamification</h3>
                 <p className="text-sm text-muted-foreground">
                   Earn points and badges for your contributions. Compete on leaderboards and get recognized.
