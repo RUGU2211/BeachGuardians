@@ -76,11 +76,6 @@ export default async function HomePage() {
           >
             Sign Up
           </Link>
-          <Button asChild>
-            <Link href="/dashboard" prefetch={false}>
-              Go to App
-            </Link>
-          </Button>
         </nav>
       </header>
       <main className="flex-1">
