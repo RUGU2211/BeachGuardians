@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,9 +15,13 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { generateEventImage } from '@/ai/flows/generate-event-image-flow';
-import { mockEvents } from '@/lib/mockData'; // To add the new event to mock data
 import type { Event } from '@/lib/types';
 import React from 'react';
+import { getNewEventNotificationTemplate } from '@/lib/email-templates';
+import { sendEmailFromClient } from '@/lib/client-email';
+import { collection, getDocs, addDoc } from 'firebase/firestore';
+import { db, storage } from '@/lib/firebase';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const eventFormSchema = z.object({
   name: z.string().min(3, { message: 'Event name must be at least 3 characters.' }),
@@ -65,11 +68,33 @@ export function EventForm() {
         eventName: data.name,
         eventDescription: data.description,
       });
-      eventImageUrl = imageResult.imageDataUri;
-      toast({
-        title: "Image Generated!",
-        description: "AI image created successfully.",
-      });
+
+      if (imageResult?.imageDataUri) {
+        try {
+          toast({
+            title: "AI Image Generated",
+            description: "Now uploading to storage...",
+          });
+          const storageRef = ref(storage, `event-posters/${data.name.replace(/\s+/g, '-')}-${Date.now()}.jpg`);
+          // The string is a data URL: "data:image/jpeg;base64,..."
+          // We need to upload it as a 'data_url'
+          const snapshot = await uploadString(storageRef, imageResult.imageDataUri, 'data_url');
+          eventImageUrl = await getDownloadURL(snapshot.ref);
+           toast({
+            title: "Image Uploaded Successfully!",
+            description: "Your event poster is ready.",
+          });
+        } catch (uploadError) {
+          console.error("Error uploading event image to Firebase Storage:", uploadError);
+          toast({
+            title: "Image Upload Failed",
+            description: "Could not upload the AI image. Using a default placeholder.",
+            variant: "destructive",
+          });
+        }
+      } else {
+         throw new Error("Image generation did not return a data URI.");
+      }
     } catch (error) {
       console.error('Error generating event image:', error);
       toast({
@@ -79,31 +104,44 @@ export function EventForm() {
       });
     }
 
-    const newEvent: Event = {
-      id: `evt${Date.now()}`, // Simple unique ID for mock data
+    const newEventData = {
       name: data.name,
       date: data.date.toISOString(),
       time: data.time,
       location: data.location,
       description: data.description,
       organizer: data.organizer,
-      volunteers: [], // New event starts with no volunteers
-      mapImageUrl: eventImageUrl, // Use generated or placeholder image
-      status: 'upcoming',
+      volunteers: [],
+      mapImageUrl: eventImageUrl,
+      status: 'upcoming' as const,
       wasteCollectedKg: 0,
     };
 
-    // Add to mockEvents array (for demonstration purposes)
-    // In a real app, this would be an API call to save to a database.
-    mockEvents.unshift(newEvent);
+    try {
+      const docRef = await addDoc(collection(db, 'events'), newEventData);
+      console.log("Document written with ID: ", docRef.id);
+      
+      toast({
+        title: "Event Created!",
+        description: `${data.name} has been successfully scheduled.`,
+      });
 
-    toast({
-      title: "Event Created!",
-      description: `${newEvent.name} has been successfully scheduled.`,
-    });
-    
-    router.push('/events');
-    setIsSubmitting(false);
+      // Note: Email notifications removed to fix Firebase permission issues
+      // In a production app, this would be handled by a server-side function
+      
+      router.push('/events');
+      router.refresh();
+
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      toast({
+        title: "Event Creation Failed",
+        description: "There was an error saving the event. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (

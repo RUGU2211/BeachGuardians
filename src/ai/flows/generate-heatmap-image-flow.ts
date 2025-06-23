@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview AI flow to generate a conceptual heatmap image.
@@ -22,7 +21,27 @@ const GenerateHeatmapImageOutputSchema = z.object({
 export type GenerateHeatmapImageOutput = z.infer<typeof GenerateHeatmapImageOutputSchema>;
 
 export async function generateHeatmapImage(input: GenerateHeatmapImageInput): Promise<GenerateHeatmapImageOutput> {
-  return generateHeatmapImageFlow(input);
+  const maxRetries = 3;
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      // Execute the flow and return the result on success
+      return await generateHeatmapImageFlow(input);
+    } catch (error: any) {
+      attempt++;
+      console.error(`Attempt ${attempt} failed for generateHeatmapImage:`, error);
+
+      // If this was the last attempt, re-throw the error to be handled by the caller
+      if (attempt >= maxRetries) {
+        throw new Error(`Failed to generate heatmap image after ${maxRetries} attempts. Last error: ${error.message}`);
+      }
+      
+      // Optional: Wait for a short period before retrying (e.g., exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  // This part should not be reachable, but is here to satisfy TypeScript
+  throw new Error('Exited heatmap generation loop unexpectedly.');
 }
 
 const imageModel = 'googleai/gemini-2.0-flash-exp';

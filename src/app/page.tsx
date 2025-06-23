@@ -1,45 +1,22 @@
-
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { Leaf, Award, Users, BarChart, Waves, Sun, ShieldCheck } from 'lucide-react';
 // Removed: import { generateHeroImage } from '@/ai/flows/generate-hero-image-flow';
 
-function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
+function BeachGuardiansLogo() {
   return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <path 
-        d="M12 2C11.14 2 7.58 2.84 5.03 4.12C2.48 5.4 2 7.81 2 10.25C2 15.31 6.91 20.25 12 22C17.09 20.25 22 15.31 22 10.25C22 7.81 21.52 5.4 18.97 4.12C16.42 2.84 12.86 2 12 2Z"
-        fill="hsl(var(--primary)/0.1)"
-      />
-      <path d="M11 10V14" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M9.5 14C10.5 13.5 11.5 13.5 12.5 14" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" fill="none"/>
-      <path d="M11 10L9 8" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L13 8" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L10 7" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L12 7" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M7 18C9 16.5 11 16.5 13 18" stroke="hsl(var(--accent))" strokeWidth="1" strokeLinecap="round" fill="none"/>
-      <path d="M10 20C12 18.5 14 18.5 16 20" stroke="hsl(var(--accent))" strokeWidth="1" strokeLinecap="round" fill="none" opacity="0.7"/>
-      <path 
-        d="M12 2C11.14 2 7.58 2.84 5.03 4.12C2.48 5.4 2 7.81 2 10.25C2 15.31 6.91 20.25 12 22C17.09 20.25 22 15.31 22 10.25C22 7.81 21.52 5.4 18.97 4.12C16.42 2.84 12.86 2 12 2Z" 
-        stroke="hsl(var(--primary))" 
-        strokeWidth="1.5" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-        fill="none" 
-      />
-    </svg>
+    <Image 
+      src="/logo.jpg" 
+      alt="BeachGuardians Logo" 
+      width={32} 
+      height={32} 
+      className="h-8 w-8 rounded-full"
+    />
   );
 }
 
-
-export default async function HomePage() {
+export default function HomePage() {
   // Use a static placeholder representing the user's image.
   const heroImageUrl = "https://placehold.co/600x400.png"; 
   const heroImageHint = "volunteers cleaning beach"; // Updated hint
@@ -55,114 +32,175 @@ export default async function HomePage() {
   // }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="px-4 lg:px-6 h-16 flex items-center border-b">
-        <Link href="/" className="flex items-center justify-center" prefetch={false}>
-          <BeachGuardiansIcon className="h-6 w-6 text-primary" />
-          <span className="ml-2 text-xl font-semibold font-headline">BeachGuardians</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6">
-          <Link
-            href="/login"
-            className="text-sm font-medium hover:underline underline-offset-4"
-            prefetch={false}
-          >
-            Login
+    <div className="flex flex-col min-h-[100dvh] bg-background text-foreground">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-sm">
+        <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-6">
+          <Link href="/" className="flex items-center gap-2" prefetch={false}>
+            <BeachGuardiansLogo />
+            <span className="text-xl font-bold text-primary">BeachGuardians</span>
           </Link>
-          <Link
-            href="/signup"
-            className="text-sm font-medium hover:underline underline-offset-4"
-            prefetch={false}
-          >
-            Sign Up
-          </Link>
-        </nav>
+          <nav className="flex items-center gap-4 sm:gap-6">
+            <Button variant="outline" asChild className="border-primary text-primary hover:bg-primary/10">
+              <Link href="/login" prefetch={false}>
+                Login
+              </Link>
+            </Button>
+            <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
+              <Link href="/signup" prefetch={false}>
+                Sign Up
+              </Link>
+            </Button>
+          </nav>
+        </div>
       </header>
-      <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48">
-          <div className="container px-4 md:px-6">
-            <div className="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-12 xl:grid-cols-[1fr_600px]">
-              <div className="flex flex-col justify-center space-y-4">
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none font-headline text-primary">
-                    Clean Coasts, Clear Future.
-                  </h1>
-                  <p className="max-w-[600px] text-muted-foreground md:text-xl">
-                    Join BeachGuardians, a community dedicated to preserving our planet's beautiful coastlines. Log your cleanup efforts, track our collective impact, and earn rewards.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 min-[400px]:flex-row">
-                  <Button asChild size="lg">
-                    <Link href="/signup" prefetch={false}>
-                      Join Now
-                    </Link>
-                  </Button>
-                  <Button variant="outline" size="lg" asChild>
-                    <Link href="/events" prefetch={false}>
-                      Find an Event
-                    </Link>
-                  </Button>
-                </div>
+
+      <main className="flex-1 pt-16">
+        <div className="w-full flex flex-col items-center">
+          {/* Hero Section */}
+          <section className="w-full flex flex-col items-center justify-center text-center pt-16 pb-8 bg-background">
+            <div className="container px-4 md:px-6 space-y-6 text-center">
+              <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl xl:text-7xl/none font-headline text-primary">
+                Protect Our Shores, Preserve Our Future.
+              </h1>
+              <p className="max-w-[700px] mx-auto md:text-xl text-lg font-light text-foreground">
+                Join a global community of volunteers dedicated to keeping our beaches clean. Track your impact, earn rewards, and become a guardian of our coastlines.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+                <Button asChild size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg transition-transform transform hover:scale-105">
+                  <Link href="/signup" prefetch={false}>
+                    Start Your Journey
+                  </Link>
+                </Button>
+                <Button variant="outline" size="lg" asChild className="border-accent text-accent hover:bg-accent/10 transition-transform transform hover:scale-105">
+                  <Link href="/events" prefetch={false}>
+                    Find a Cleanup Event
+                  </Link>
+                </Button>
               </div>
-              <Image
-                src={heroImageUrl}
-                width="600"
-                height="400"
-                alt="Hero image depicting volunteers cleaning a beach"
-                data-ai-hint={heroImageHint}
-                className="mx-auto aspect-[3/2] overflow-hidden rounded-xl object-cover sm:w-full lg:order-last"
-                priority
+            </div>
+            <div className="relative w-full flex justify-center mt-12">
+              <div className="w-full max-w-5xl h-[340px] md:h-[480px] relative">
+                <Image
+                  src="/image1.png"
+                  alt="A pristine beach with clear blue water"
+                  fill
+                  className="object-cover rounded-xl shadow-xl"
+                  priority
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Features Section */}
+          <section className="w-full py-16 md:py-24 lg:py-32 bg-white flex flex-col items-center">
+            <div className="w-full max-w-4xl px-4 md:px-6 flex flex-col items-center text-center space-y-4 mb-12">
+              <div className="inline-block rounded-lg bg-primary/10 px-4 py-2 text-sm text-primary font-semibold tracking-wide">
+                  WHY JOIN US?
+              </div>
+              <h2 className="text-3xl font-bold tracking-tighter sm:text-5xl font-headline text-gray-800">An Ocean of Opportunities Awaits</h2>
+              <p className="max-w-2xl text-gray-600 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed mx-auto">
+                Our platform isn't just about cleaning beaches. It's about building a community, recognizing your efforts, and creating a lasting impact together.
+              </p>
+            </div>
+            <div className="mx-auto grid max-w-4xl gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 w-full">
+              <FeatureCard
+                icon={<BarChart className="h-10 w-10 text-primary" />}
+                title="Track Your Impact"
+                description="Log the waste you collect and see your contribution in real-time on our global impact dashboard."
+              />
+              <FeatureCard
+                icon={<Award className="h-10 w-10 text-primary" />}
+                title="Earn Recognition"
+                description="Gain points, unlock badges, and climb the leaderboard. Your hard work deserves to be celebrated."
+              />
+              <FeatureCard
+                icon={<Users className="h-10 w-10 text-primary" />}
+                title="Connect & Collaborate"
+                description="Find or create local cleanup events. Team up with fellow guardians to make a bigger splash."
               />
             </div>
-          </div>
-        </section>
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-muted/50">
-          <div className="container px-4 md:px-6">
-            <div className="flex flex-col items-center justify-center space-y-4 text-center">
-              <div className="space-y-2">
-                <div className="inline-block rounded-lg bg-primary/10 px-3 py-1 text-sm text-primary font-medium">
-                  Key Features
-                </div>
-                <h2 className="text-3xl font-bold tracking-tighter sm:text-5xl font-headline">Make a Difference with BeachGuardians</h2>
-                <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  Our platform empowers volunteers with tools to organize, participate, and see the tangible results of their conservation efforts.
-                </p>
+          </section>
+
+          {/* How It Works Section */}
+          <section className="w-full py-16 md:py-24 lg:py-32 bg-muted/40 flex flex-col items-center">
+            <div className="w-full max-w-3xl px-4 md:px-6 flex flex-col items-center text-center space-y-4">
+              <div className="inline-block rounded-lg bg-primary/10 px-4 py-2 text-sm text-primary font-semibold tracking-wide">
+                  GETTING STARTED
+              </div>
+              <h2 className="text-3xl font-bold tracking-tighter md:text-4xl/tight text-gray-800">
+                  Three Steps to a Cleaner Coastline
+              </h2>
+              <p className="mx-auto max-w-2xl text-gray-600 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
+                  It's simple to get started. Find an event, join in, and see the difference you make.
+              </p>
+            </div>
+            <div className="mx-auto w-full max-w-4xl pt-12">
+              <div className="grid gap-8 md:grid-cols-3">
+                <StepCard icon={<Sun className="h-8 w-8 text-primary"/>} title="1. Discover" description="Find local events or start your own beach cleanup initiative." />
+                <StepCard icon={<Leaf className="h-8 w-8 text-primary"/>} title="2. Contribute" description="Participate, log your collected waste, and help our environment." />
+                <StepCard icon={<ShieldCheck className="h-8 w-8 text-primary"/>} title="3. Inspire" description="Share your achievements and motivate others to join the cause." />
               </div>
             </div>
-            <div className="mx-auto grid max-w-5xl gap-8 sm:grid-cols-2 md:gap-12 lg:grid-cols-3 pt-12">
-              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
-                <h3 className="text-lg font-bold font-headline">Event Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  Discover and join local cleanup events. Organizers can easily create and manage events.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
-                <h3 className="text-lg font-bold font-headline">Impact Tracking</h3>
-                <p className="text-sm text-muted-foreground">
-                  Log the type and amount of waste collected. See real-time statistics and our collective impact.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow text-left">
-                <h3 className="text-lg font-bold font-headline">Gamification</h3>
-                <p className="text-sm text-muted-foreground">
-                  Earn points and badges for your contributions. Compete on leaderboards and get recognized.
-                </p>
-              </div>
+          </section>
+
+          {/* Final CTA Section */}
+          <section className="w-full py-16 md:py-24 lg:py-32 bg-primary text-primary-foreground flex flex-col items-center">
+            <div className="w-full max-w-2xl px-4 md:px-6 text-center flex flex-col items-center">
+              <h2 className="text-3xl font-bold tracking-tighter md:text-4xl/tight text-white">
+                Ready to Make a Wave of Change?
+              </h2>
+              <p className="mx-auto max-w-2xl text-primary-foreground/80 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed mt-4 mb-6">
+                Every piece of trash removed is a victory for our oceans. Join BeachGuardians today and be a part of the solution.
+              </p>
+              <Button asChild size="lg" variant="secondary" className="w-full max-w-xs transition-transform transform hover:scale-105">
+                <Link href="/signup">Become a Beach Guardian</Link>
+              </Button>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </main>
-      <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} BeachGuardians. All rights reserved.</p>
-        <nav className="sm:ml-auto flex gap-4 sm:gap-6">
-          <Link href="#" className="text-xs hover:underline underline-offset-4" prefetch={false}>
-            Terms of Service
-          </Link>
-          <Link href="#" className="text-xs hover:underline underline-offset-4" prefetch={false}>
-            Privacy
-          </Link>
-        </nav>
-      </footer>
+
+      <footer className="bg-muted/40 p-6 md:py-8 w-full">
+         <div className="container mx-auto flex flex-col md:flex-row items-center justify-between">
+            <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} BeachGuardians. All rights reserved.</p>
+            <nav className="flex gap-4 sm:gap-6 mt-4 md:mt-0">
+                <Link href="#" className="text-sm hover:text-primary hover:underline underline-offset-4" prefetch={false}>
+                    Terms of Service
+                </Link>
+                <Link href="#" className="text-sm hover:text-primary hover:underline underline-offset-4" prefetch={false}>
+                    Privacy
+                </Link>
+            </nav>
+        </div>
+    </footer>
     </div>
   );
+}
+
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+  return (
+    <div className="flex flex-col items-center text-center gap-4 p-6 rounded-xl bg-white shadow-md hover:shadow-xl transition-shadow duration-300">
+      <div className="bg-primary/10 p-4 rounded-full">
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold font-headline text-gray-800">{title}</h3>
+      <p className="text-gray-600">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function StepCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
+    return (
+        <div className="flex flex-col items-center space-y-4">
+            <div className="p-3 border-2 border-dashed border-primary/50 rounded-full">
+                {icon}
+            </div>
+            <div className="space-y-2 text-center">
+                <h3 className="text-lg font-bold">{title}</h3>
+                <p className="text-muted-foreground">{description}</p>
+            </div>
+        </div>
+    );
 }

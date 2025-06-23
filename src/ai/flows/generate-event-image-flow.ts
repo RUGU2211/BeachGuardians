@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview AI flow to generate an image for an event.
@@ -8,49 +7,33 @@
  * - GenerateEventImageOutput - The return type for the generateEventImage function.
  */
 
-import {ai} from '@/ai/genkit';
+import { generateEventImage as generateDalleEventImage } from '@/lib/dalle';
 import {z} from 'genkit';
 
 const GenerateEventImageInputSchema = z.object({
   eventName: z.string().describe('The name of the event.'),
   eventDescription: z.string().describe('A brief description of the event.'),
+  format: z.enum(["poster", "banner"]).default("poster").describe("The desired format: 'poster' (portrait) or 'banner' (landscape)."),
 });
 export type GenerateEventImageInput = z.infer<typeof GenerateEventImageInputSchema>;
 
 const GenerateEventImageOutputSchema = z.object({
-  imageDataUri: z.string().describe("The generated image for the event, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
+  imageDataUri: z.string().describe("The generated image for the event, as a URL."),
 });
 export type GenerateEventImageOutput = z.infer<typeof GenerateEventImageOutputSchema>;
 
 export async function generateEventImage(input: GenerateEventImageInput): Promise<GenerateEventImageOutput> {
-  return generateEventImageFlow(input);
+  const aspect = input.format === 'banner' ? 'landscape banner (16:9)' : 'portrait poster (4:5)';
+  const prompt = `
+    Create a high-quality, visually appealing event ${input.format} for a community event focused on environmental cleanup or local gathering.
+    Event Name: "${input.eventName}"
+    Event Description: "${input.eventDescription}"
+    Artistic Style: vibrant, hopeful, and inspiring.
+    Format: ${aspect}
+    The image should be in a ${aspect} aspect ratio, suitable for use on social media.
+    Do NOT include any text or writing.
+    Evoke themes of nature, community spirit, and positive action.
+  `;
+  const imageUrl = await generateDalleEventImage({ prompt, format: input.format });
+  return { imageDataUri: imageUrl };
 }
-
-// Gemini 2.0 Flash experimental image generation model
-const imageModel = 'googleai/gemini-2.0-flash-exp';
-
-const generateEventImageFlow = ai.defineFlow(
-  {
-    name: 'generateEventImageFlow',
-    inputSchema: GenerateEventImageInputSchema,
-    outputSchema: GenerateEventImageOutputSchema,
-  },
-  async (input) => {
-    const { media } = await ai.generate({
-      model: imageModel,
-      prompt: `Generate a visually appealing and relevant image for a community event focused on environmental cleanup or local gathering.
-Event Name: "${input.eventName}"
-Event Description: "${input.eventDescription}"
-The image should evoke themes of nature, community spirit, and positive action. Avoid text in the image.`,
-      config: {
-        responseModalities: ['TEXT', 'IMAGE'], // Must include both for this model
-      },
-    });
-
-    if (!media?.url) {
-      throw new Error('Image generation failed or returned no media URL.');
-    }
-    
-    return { imageDataUri: media.url };
-  }
-);

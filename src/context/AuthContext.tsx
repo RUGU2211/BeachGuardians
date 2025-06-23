@@ -1,41 +1,95 @@
-
 'use client';
 
-import type { User } from 'firebase/auth';
-import { onAuthStateChanged } from 'firebase/auth';
-import type { ReactNode } from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth } from '@/lib/firebase';
+import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, getUserProfile } from '@/lib/firebase';
+import type { UserProfile } from '@/lib/types';
 
 interface AuthContextType {
-  currentUser: User | null;
+  user: User | null;
+  userProfile: UserProfile | null;
   loading: boolean;
-  // You can add more auth-related functions here if needed, e.g., explicit login/logout handlers
-  // that also update context, though onAuthStateChanged often handles this.
+  logout: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const refreshUserProfile = async () => {
+    if (user) {
+      try {
+        const profile = await getUserProfile(user.uid);
+        setUserProfile(profile);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        setUserProfile(null);
+      }
+    } else {
+      setUserProfile(null);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (newUser) => {
+      setUser(newUser);
+      
+      if (newUser) {
+        setLoading(true);
+        let profile = null;
+        // Retry fetching profile a few times to deal with replication lag
+        for (let i = 0; i < 3; i++) {
+          profile = await getUserProfile(newUser.uid);
+          if (profile) break;
+          // Wait for a short period before retrying
+          await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+        }
+        
+        if (profile) {
+          setUserProfile(profile);
+        } else {
+          console.error(`Failed to fetch user profile for ${newUser.uid} after multiple attempts.`);
+          // Keep user authenticated, but profile is null. 
+          // Pages should handle this case (e.g., show a "complete profile" prompt).
+          setUserProfile(null);
+        }
+      } else {
+        setUserProfile(null);
+      }
+      
       setLoading(false);
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
   const value = {
-    currentUser,
+    user,
+    userProfile,
     loading,
+    logout: handleSignOut,
+    refreshUserProfile,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

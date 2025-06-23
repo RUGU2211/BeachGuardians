@@ -31,10 +31,6 @@ const GenerateSocialMediaPostOutputSchema = z.object({
 
 export type GenerateSocialMediaPostOutput = z.infer<typeof GenerateSocialMediaPostOutputSchema>;
 
-export async function generateSocialMediaPost(input: GenerateSocialMediaPostInput): Promise<GenerateSocialMediaPostOutput> {
-  return generateSocialMediaPostFlow(input);
-}
-
 const prompt = ai.definePrompt({
   name: 'generateSocialMediaPostPrompt',
   input: {schema: GenerateSocialMediaPostInputSchema},
@@ -55,7 +51,7 @@ const prompt = ai.definePrompt({
   Social Media Post:`, 
 });
 
-const generateSocialMediaPostFlow = ai.defineFlow(
+export const generateSocialMediaPostFlow = ai.defineFlow(
   {
     name: 'generateSocialMediaPostFlow',
     inputSchema: GenerateSocialMediaPostInputSchema,

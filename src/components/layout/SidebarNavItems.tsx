@@ -1,114 +1,152 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
-  CalendarDays,
-  User,
-  Trash2,
-  BarChart3,
-  ShieldCheck,
-  Sparkles,
-  MessageSquareHeart,
-  Send,
-  ChevronDown,
-  ChevronUp,
+  Calendar,
+  Users,
   Settings,
+  LogOut,
+  Trash2,
+  Trophy,
+  Sparkles,
+  Shield,
+  MessageSquare,
+  BarChart2,
+  ClipboardList,
+  Award,
+  Map,
 } from 'lucide-react';
-import {
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
-  SidebarMenuSubButton,
-} from '@/components/ui/sidebar';
-import { cn } from '@/lib/utils';
-import React, { useState, useEffect } from 'react'; // Added useEffect
-
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/events', label: 'Events', icon: CalendarDays },
-  { href: '/profile', label: 'My Profile', icon: User },
-  { href: '/waste-logging', label: 'Waste Logging', icon: Trash2 },
-  { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
-
-// In a real app, this would come from your authentication and user profile data (e.g., Firestore + custom claims)
-// For now, we simulate it. This should be updated when full role management is in place.
-const IS_CURRENT_USER_ADMIN = true; 
-
-const adminNavItems = [
-  { href: '/admin/ai-content', label: 'AI Content Generator', icon: Sparkles },
-  { href: '/admin/event-summary', label: 'AI Event Summaries', icon: Send }, 
-  { href: '/admin/engagement-tool', label: 'AI Engagement Messages', icon: MessageSquareHeart },
-];
-
 
 export function SidebarNavItems() {
   const pathname = usePathname();
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const { userProfile, logout } = useAuth();
 
-  const isAdminSectionActive = adminNavItems.some(item => pathname.startsWith(item.href));
-  
-  useEffect(() => {
-    if (isAdminSectionActive && IS_CURRENT_USER_ADMIN) {
-      setIsAdminOpen(true);
+  const isAdmin = userProfile?.role === 'admin' && userProfile?.isVerified === true;
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Error signing out:', error);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdminSectionActive]); // Removed IS_CURRENT_USER_ADMIN from deps as it's a constant here
+  };
 
+  const navItems = [
+    {
+      title: 'Dashboard',
+      href: '/dashboard',
+      icon: LayoutDashboard,
+    },
+    {
+      title: 'Events',
+      href: '/events',
+      icon: Calendar,
+    },
+    {
+      title: 'Waste Logging',
+      href: '/waste-logging',
+      icon: Trash2,
+    },
+    {
+      title: 'Leaderboard',
+      href: '/leaderboard',
+      icon: Trophy,
+    },
+    {
+      title: 'Live Map',
+      href: '/map',
+      icon: Map,
+    },
+    {
+      title: 'Profile',
+      href: '/profile',
+      icon: Users,
+    },
+    {
+      title: 'Settings',
+      href: '/settings',
+      icon: Settings,
+    },
+  ];
+
+  const adminNavItems = [
+    {
+      title: 'User Management',
+      href: '/admin/user-management',
+      icon: Users,
+      adminOnly: true,
+    },
+    {
+      title: 'AI Content',
+      href: '/admin/ai-content',
+      icon: Sparkles,
+      adminOnly: true,
+    },
+    {
+      title: 'Engagement Tool',
+      href: '/admin/engagement-tool',
+      icon: MessageSquare,
+      adminOnly: true,
+    },
+    {
+      title: 'Event Summaries',
+      href: '/admin/event-summary',
+      icon: ClipboardList,
+      adminOnly: true,
+    },
+    {
+      title: 'Impact Analytics',
+      href: '/admin/impact-analytics',
+      icon: BarChart2,
+      adminOnly: true,
+    },
+    {
+      title: 'Certificate Issuance',
+      href: '/admin/certificate-issuance',
+      icon: Award,
+      adminOnly: true,
+    },
+  ];
+
+  const finalNavItems = isAdmin ? [...navItems.slice(0, 4), ...adminNavItems, ...navItems.slice(4)] : navItems;
 
   return (
-    <SidebarMenu>
-      {navItems.map((item) => (
-        <SidebarMenuItem key={item.label}>
-          <SidebarMenuButton
-            asChild
-            isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
-            tooltip={{ children: item.label, className: 'bg-primary text-primary-foreground' }}
+    <nav className="grid items-start gap-2">
+      {finalNavItems.map((item, index) => {
+        const Icon = item.icon;
+        return (
+          <Link
+            key={index}
+            href={item.href}
+            className={cn(
+              'group flex items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground',
+              pathname === item.href ? 'bg-accent' : 'transparent'
+            )}
           >
-            <Link href={item.href}>
-              <item.icon />
-              <span>{item.label}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-
-      {IS_CURRENT_USER_ADMIN && ( 
-        <SidebarMenuItem>
-          <SidebarMenuButton 
-              onClick={() => setIsAdminOpen(!isAdminOpen)} 
-              tooltip={{children: "Admin Tools", className: 'bg-primary text-primary-foreground' }}
-              isActive={isAdminSectionActive}
-          >
-            <ShieldCheck />
-            <span>Admin Tools</span>
-            {isAdminOpen ? <ChevronUp className="ml-auto h-4 w-4" /> : <ChevronDown className="ml-auto h-4 w-4" />}
-          </SidebarMenuButton>
-          {isAdminOpen && (
-            <SidebarMenuSub>
-              {adminNavItems.map((item) => (
-                <SidebarMenuSubItem key={item.label}>
-                  <SidebarMenuSubButton
-                    asChild
-                    isActive={pathname === item.href || pathname.startsWith(item.href)}
-                  >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.label}</span>
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              ))}
-            </SidebarMenuSub>
-          )}
-        </SidebarMenuItem>
-      )}
-    </SidebarMenu>
+            <Icon className="mr-2 h-4 w-4" />
+            <span>{item.title}</span>
+            {item.adminOnly && (
+              <Shield className="ml-auto h-3 w-3 text-muted-foreground" />
+            )}
+          </Link>
+        );
+      })}
+      
+      <div className="mt-auto pt-4">
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+          onClick={handleSignOut}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Log out</span>
+        </Button>
+      </div>
+    </nav>
   );
 }

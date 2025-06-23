@@ -1,102 +1,204 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { mockEvents, mockVolunteers, getEventById, getVolunteerById } from '@/lib/mockData';
+import {
+  getEventById,
+  updateEvent,
+  addPointsToUser,
+  joinEvent,
+  leaveEvent,
+  getUsersByIds,
+} from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarDays, MapPin, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
+import { CalendarDays, MapPin, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { Event, Volunteer } from '@/lib/types';
+import type { Event, UserProfile } from '@/lib/types';
+import { getEventRegistrationConfirmationTemplate } from '@/lib/email-templates';
+import { sendEmailFromClient } from '@/lib/client-email';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+function VolunteerList({ volunteers }: { volunteers: UserProfile[] }) {
+  if (volunteers.length === 0) {
+    return <p className="pt-4 text-center text-muted-foreground">No volunteers to display.</p>;
+  }
+  return (
+    <ul className="pt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {volunteers.map(volunteer => (
+        <li key={volunteer.uid} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+          <Avatar>
+            <AvatarImage src={volunteer.photoURL || undefined} alt={volunteer.displayName} />
+            <AvatarFallback>{volunteer.displayName?.charAt(0).toUpperCase() || 'V'}</AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium">{volunteer.displayName}</p>
+            <p className="text-xs text-muted-foreground">{volunteer.email}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
   const eventId = typeof params.id === 'string' ? params.id : '';
   
-  const { currentUser, loading: authLoading } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [currentEvent, setCurrentEvent] = useState<Event | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
+  const [hasCheckedIn, setHasCheckedIn] = useState(false);
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
+  const [registeredVolunteers, setRegisteredVolunteers] = useState<UserProfile[]>([]);
+  const [checkedInVolunteers, setCheckedInVolunteers] = useState<UserProfile[]>([]);
+
+  const isEventCreator = userProfile?.uid === currentEvent?.organizerId;
+  const isAdmin = userProfile?.role === 'admin';
+  const canManageEvent = isAdmin || isEventCreator;
+
+  const fetchEventData = useCallback(async () => {
+    setIsLoadingEvent(true);
+    try {
+      const eventData = await getEventById(eventId);
+      setCurrentEvent(eventData);
+
+      if (eventData) {
+        if (eventData.volunteers.length > 0) {
+          const volunteerProfiles = await getUsersByIds(eventData.volunteers);
+          setRegisteredVolunteers(volunteerProfiles);
+        }
+        if (eventData.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
+          const checkedInIds = Object.keys(eventData.checkedInVolunteers);
+          const checkedInProfiles = await getUsersByIds(checkedInIds);
+          setCheckedInVolunteers(checkedInProfiles);
+        }
+
+        if (userProfile) {
+          setIsRegistered(eventData.volunteers.includes(userProfile.uid));
+          setHasCheckedIn(!!eventData.checkedInVolunteers?.[userProfile.uid]);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching event data:", error);
+      toast({ title: "Error", description: "Could not load event details.", variant: "destructive" });
+    } finally {
+      setIsLoadingEvent(false);
+    }
+  }, [eventId, userProfile, toast]);
 
   useEffect(() => {
-    setIsLoadingEvent(true);
-    const eventData = getEventById(eventId);
-    if (eventData) {
-      setCurrentEvent(eventData);
-      if (currentUser && eventData.volunteers.includes(currentUser.uid)) {
-        setIsRegistered(true);
-      } else {
-        setIsRegistered(false);
-      }
-    } else {
-      setCurrentEvent(null); // Event not found
+    if (eventId) {
+      fetchEventData();
     }
-    setIsLoadingEvent(false);
-  }, [eventId, currentUser]);
+  }, [eventId, fetchEventData]);
 
-  const registeredVolunteersDisplayList = useMemo(() => {
-    if (!currentEvent) return [];
-    return currentEvent.volunteers.map(id => {
-      const mockVol = getVolunteerById(id);
-      if (mockVol) return mockVol;
-      if (currentUser && id === currentUser.uid) {
-        return {
-          id: currentUser.uid,
-          name: currentUser.displayName || currentUser.email?.split('@')[0] || "Registered User",
-          email: currentUser.email || "No email",
-          avatarUrl: currentUser.photoURL || `https://placehold.co/100x100.png?text=${(currentUser.displayName || currentUser.email || "U").charAt(0).toUpperCase()}`,
-          points: 0,
-          contributions: [],
-          achievements: []
-        } as Volunteer;
-      }
-      return null;
-    }).filter(Boolean) as Volunteer[];
-  }, [currentEvent, currentUser]);
+  const handleLeave = async () => {
+    if (!userProfile || !currentEvent) return;
 
-  const handleRegister = () => {
-    if (authLoading) return; // Do nothing if auth state is still loading
-
-    if (!currentUser) {
-      toast({ title: "Authentication Required", description: "Please log in to register for this event.", variant: "destructive" });
-      router.push('/login'); // Optionally redirect to login
-      return;
+    try {
+      await leaveEvent(eventId, userProfile.uid);
+      setIsRegistered(false);
+      await fetchEventData(); // Refresh data to update volunteer list
+      toast({
+        title: "You've left the event",
+        description: `You are no longer registered for ${currentEvent.name}.`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to leave event:", error);
+      toast({ title: 'Error', description: 'Could not leave the event. Please try again.', variant: 'destructive' });
     }
-    if (!currentEvent) {
-      toast({ title: "Error", description: "Event details not loaded or event does not exist.", variant: "destructive" });
+  };
+
+  const handleCheckIn = async () => {
+    if (!userProfile || !currentEvent) return;
+    if (hasCheckedIn) {
+      toast({ title: 'Already Checked In', description: 'You have already checked in for this event.' });
       return;
     }
 
-    // Simulate registration
-    if (!currentEvent.volunteers.includes(currentUser.uid)) {
-      const updatedEvent = {
-        ...currentEvent,
-        volunteers: [...currentEvent.volunteers, currentUser.uid]
-      };
-      setCurrentEvent(updatedEvent); // Update local state for immediate UI feedback
-      // In a real app, you'd send this update to the backend.
-      // For mock data, this change is local.
+    const checkInTime = new Date().toISOString();
+    const updatedCheckedInVolunteers = {
+      ...currentEvent.checkedInVolunteers,
+      [userProfile.uid]: { checkInTime },
+    };
+
+    try {
+      await updateEvent(eventId, { checkedInVolunteers: updatedCheckedInVolunteers });
+      await addPointsToUser(userProfile.uid, 50); // Award 50 points for checking in
+      
+      setHasCheckedIn(true);
+      // Refresh data
+      await fetchEventData();
+      
+      toast({
+        title: 'Check-in Successful!',
+        description: 'You have earned 50 points for participating. Thank you for making a difference!',
+      });
+    } catch (error) {
+      console.error("Check-in failed:", error);
+      toast({ title: 'Check-in Failed', description: 'Could not process your check-in. Please try again.', variant: 'destructive' });
     }
-    setIsRegistered(true);
-    toast({
-      title: "Registration Successful!",
-      description: `You have been registered for ${currentEvent.name}.`,
-    });
+  };
+
+  const handleRegister = async () => {
+    if (authLoading || !userProfile || !userProfile.email || !currentEvent) {
+      toast({ title: "Cannot Register", description: "Please ensure you are logged in and event details are loaded.", variant: "destructive" });
+      if (!userProfile) router.push('/login');
+      return;
+    }
+    
+    try {
+      await joinEvent(eventId, userProfile.uid);
+      
+      setIsRegistered(true);
+      // Refresh data
+      await fetchEventData();
+
+      toast({
+        title: "Registration Successful!",
+        description: `You have been registered for ${currentEvent.name}.`,
+      });
+
+      // Send confirmation email
+      try {
+          const { subject, html } = getEventRegistrationConfirmationTemplate(
+              userProfile.displayName || 'Volunteer',
+              currentEvent.name,
+              new Date(currentEvent.date).toLocaleDateString()
+          );
+          await sendEmailFromClient({
+              to: userProfile.email,
+              subject,
+              html,
+          });
+      } catch (error) {
+          console.error("Failed to send registration email:", error);
+          toast({
+              title: "Email Confirmation Failed",
+              description: "We couldn't send a confirmation email, but you are registered.",
+              variant: "default"
+          });
+      }
+    } catch (error) {
+      console.error("Registration failed:", error);
+      toast({ title: 'Registration Failed', description: 'Could not register you for the event. Please try again.', variant: 'destructive' });
+    }
   };
 
   const handleGeoCheckIn = () => {
     toast({
       title: 'Geo Check-in',
-      description: 'This feature would use your device location. (Not implemented for mock data)',
+      description: 'This feature is not yet implemented.',
       variant: 'default'
     });
   };
@@ -126,12 +228,22 @@ export default function EventDetailPage() {
   }
 
   const eventDate = new Date(currentEvent.date);
+  const isPastEvent = eventDate < new Date();
 
   return (
     <div className="space-y-6">
-      <Button variant="outline" onClick={() => router.back()} className="mb-4">
-        <ChevronLeft className="mr-2 h-4 w-4" /> Back to Events
-      </Button>
+      <div className="flex justify-between items-center">
+        <Button variant="outline" onClick={() => router.back()} className="mb-4">
+          <ChevronLeft className="mr-2 h-4 w-4" /> Back to Events
+        </Button>
+        {canManageEvent && (
+          <Button asChild>
+            <Link href={`/events/${eventId}/edit`}>
+              Edit Event
+            </Link>
+          </Button>
+        )}
+      </div>
 
       <Card className="overflow-hidden shadow-xl">
         <CardHeader className="p-0 relative">
@@ -162,8 +274,7 @@ export default function EventDetailPage() {
             </div>
             <div className="flex items-center">
               <Users className="mr-3 h-5 w-5 text-primary" />
-              <span>{currentEvent.volunteers.length} registered</span> 
-              {/* This length updates from currentEvent state */}
+              <span>{currentEvent.volunteers.length} registered</span>
             </div>
             {currentEvent.status === 'completed' && currentEvent.wasteCollectedKg && (
               <div className="flex items-center">
@@ -178,17 +289,22 @@ export default function EventDetailPage() {
           </CardDescription>
 
           <div className="space-x-2 mt-4">
-            {(currentEvent.status === 'upcoming' || currentEvent.status === 'ongoing') && (
-              isRegistered ? (
-                <Button size="lg" disabled variant="outline">
-                  <CheckCircle className="mr-2 h-5 w-5" /> Registered
-                </Button>
-              ) : (
-                <Button size="lg" onClick={handleRegister} disabled={authLoading}>
-                  {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                  Register for this Event
-                </Button>
-              )
+            {(currentEvent.status === 'upcoming' || currentEvent.status === 'ongoing') && !isRegistered && (
+              <Button size="lg" onClick={handleRegister} disabled={authLoading}>
+                {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                Register for this Event
+              </Button>
+            )}
+            {isRegistered && currentEvent?.status === 'ongoing' && !hasCheckedIn &&(
+              <Button size="lg" onClick={handleCheckIn} className="bg-green-600 hover:bg-green-700">
+                <UserCheck className="mr-2 h-5 w-5" />
+                Check In Now
+              </Button>
+            )}
+            {hasCheckedIn && (
+              <Button size="lg" disabled variant="outline">
+                <CheckCircle className="mr-2 h-5 w-5 text-green-500" /> You are Checked In
+              </Button>
             )}
             <Button variant="outline" size="lg" onClick={handleGeoCheckIn}>
               Geo Check-in (Sim)
@@ -199,27 +315,23 @@ export default function EventDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">Registered Volunteers ({registeredVolunteersDisplayList.length})</CardTitle>
+          <CardTitle className="font-headline">
+            Volunteers
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {registeredVolunteersDisplayList.length > 0 ? (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {registeredVolunteersDisplayList.map(volunteer => (
-                <li key={volunteer.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <Avatar>
-                    <AvatarImage src={volunteer.avatarUrl} alt={volunteer.name} data-ai-hint="person avatar" />
-                    <AvatarFallback>{volunteer.name?.split(' ').map(n=>n[0]).join('').toUpperCase() || 'V'}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">{volunteer.name}</p>
-                    <p className="text-xs text-muted-foreground">{volunteer.email}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground">No volunteers registered yet for this event.</p>
-          )}
+          <Tabs defaultValue="registered">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="registered">Registered ({registeredVolunteers.length})</TabsTrigger>
+              <TabsTrigger value="checked-in">Checked-in ({checkedInVolunteers.length})</TabsTrigger>
+            </TabsList>
+            <TabsContent value="registered">
+              <VolunteerList volunteers={registeredVolunteers} />
+            </TabsContent>
+            <TabsContent value="checked-in">
+              <VolunteerList volunteers={checkedInVolunteers} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
          {currentEvent.status === 'completed' && (
           <CardFooter>
@@ -229,6 +341,65 @@ export default function EventDetailPage() {
           </CardFooter>
         )}
       </Card>
+
+      {/* Volunteer-specific Actions */}
+      {!canManageEvent && !isPastEvent && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Participation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isRegistered ? (
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex items-center text-green-600 font-semibold">
+                  <CheckCircle className="mr-2 h-5 w-5" />
+                  You are registered for this event!
+                </div>
+                <Button onClick={handleLeave} variant="destructive">
+                  Leave Event
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleRegister}>
+                Join Event
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Admin/Organizer Check-in Panel */}
+      {canManageEvent && !isPastEvent && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Check-in Panel</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-x-2 mt-4">
+              {currentEvent.status === 'upcoming' && !isRegistered && (
+                <Button size="lg" onClick={handleRegister} disabled={authLoading}>
+                  {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                  Register for this Event
+                </Button>
+              )}
+              {isRegistered && currentEvent?.status === 'ongoing' && !hasCheckedIn &&(
+                <Button size="lg" onClick={handleCheckIn} className="bg-green-600 hover:bg-green-700">
+                  <UserCheck className="mr-2 h-5 w-5" />
+                  Check In Now
+                </Button>
+              )}
+              {hasCheckedIn && (
+                <Button size="lg" disabled variant="outline">
+                  <CheckCircle className="mr-2 h-5 w-5 text-green-500" /> You are Checked In
+                </Button>
+              )}
+              <Button variant="outline" size="lg" onClick={handleGeoCheckIn}>
+                Geo Check-in (Sim)
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

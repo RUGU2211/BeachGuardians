@@ -24,10 +24,6 @@ const SuggestEngagementMessageOutputSchema = z.object({
 });
 export type SuggestEngagementMessageOutput = z.infer<typeof SuggestEngagementMessageOutputSchema>;
 
-export async function suggestEngagementMessage(input: SuggestEngagementMessageInput): Promise<SuggestEngagementMessageOutput> {
-  return suggestEngagementMessageFlow(input);
-}
-
 const prompt = ai.definePrompt({
   name: 'suggestEngagementMessagePrompt',
   input: {schema: SuggestEngagementMessageInputSchema},
@@ -44,7 +40,7 @@ const prompt = ai.definePrompt({
   Engagement Message:`,
 });
 
-const suggestEngagementMessageFlow = ai.defineFlow(
+export const suggestEngagementMessageFlow = ai.defineFlow(
   {
     name: 'suggestEngagementMessageFlow',
     inputSchema: SuggestEngagementMessageInputSchema,

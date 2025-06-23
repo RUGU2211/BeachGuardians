@@ -8,7 +8,11 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { mockEvents } from '@/lib/mockData'; // To select an event
+import { logWasteForEvent, getAllEvents } from '@/lib/firebase';
+import { useAuth } from '@/context/AuthContext';
+import { useState, useEffect } from 'react';
+import type { Event } from '@/lib/types';
+import { Loader2 } from 'lucide-react';
 
 const wasteLogFormSchema = z.object({
   eventId: z.string({ required_error: 'Please select an event.' }),
@@ -22,9 +26,8 @@ const wasteLogFormSchema = z.object({
   return true;
 }, {
   message: 'Please specify the type of waste if "Other" is selected.',
-  path: ['otherWasteType'], // Path to the field that should display the error
+  path: ['otherWasteType'],
 });
-
 
 type WasteLogFormValues = z.infer<typeof wasteLogFormSchema>;
 
@@ -32,6 +35,22 @@ const wasteTypes = ['Plastic Bottles', 'Plastic Bags', 'Glass', 'Metal Cans', 'P
 
 export function WasteLogForm() {
   const { toast } = useToast();
+  const { userProfile } = useAuth();
+  const [activeEvents, setActiveEvents] = useState<Event[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      const allEvents = await getAllEvents();
+      console.log('All events fetched:', allEvents);
+      // Filter for events that are not cancelled
+      const filteredEvents = allEvents.filter(event => event.status !== 'cancelled');
+      console.log('Filtered events:', filteredEvents);
+      setActiveEvents(filteredEvents);
+    }
+    fetchEvents();
+  }, []);
+  
   const form = useForm<WasteLogFormValues>({
     resolver: zodResolver(wasteLogFormSchema),
     defaultValues: {
@@ -45,21 +64,34 @@ export function WasteLogForm() {
 
   const selectedWasteType = form.watch('wasteType');
 
-  function onSubmit(data: WasteLogFormValues) {
-    const finalData = {
-      ...data,
-      wasteType: data.wasteType === 'Other' ? data.otherWasteType : data.wasteType,
-    };
-    console.log('Waste log data submitted:', finalData);
-    toast({
-      title: "Waste Logged!",
-      description: `${finalData.weightKg}kg of ${finalData.wasteType} has been successfully logged.`,
-    });
-    form.reset(); // Reset form after successful submission
-  }
-  
-  const activeEvents = mockEvents.filter(event => event.status === 'upcoming' || event.status === 'ongoing' || event.status === 'completed');
+  async function onSubmit(data: WasteLogFormValues) {
+    if (!userProfile) {
+      toast({ title: "Authentication Required", description: "You must be logged in to log waste.", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
 
+    try {
+      const finalWasteType = data.wasteType === 'Other' ? data.otherWasteType! : data.wasteType;
+      await logWasteForEvent(data.eventId, {
+        type: finalWasteType,
+        weightKg: data.weightKg,
+        loggedBy: userProfile.uid,
+      });
+
+      const pointsToAward = Math.round(data.weightKg * 10);
+      toast({
+        title: "Waste Logged!",
+        description: `You've successfully logged ${data.weightKg}kg of ${finalWasteType} and earned ${pointsToAward} points!`,
+      });
+      form.reset();
+    } catch (error) {
+      console.error('Failed to log waste:', error);
+      toast({ title: "Submission Failed", description: "Could not log waste. Please try again.", variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <Form {...form}>
@@ -78,7 +110,7 @@ export function WasteLogForm() {
                 </FormControl>
                 <SelectContent>
                   {activeEvents.map(event => (
-                    <SelectItem key={event.id} value={event.id}>
+                    <SelectItem key={event.id || `event-${event.name}-${event.date}`} value={event.id}>
                       {event.name} ({new Date(event.date).toLocaleDateString()})
                     </SelectItem>
                   ))}
@@ -145,7 +177,10 @@ export function WasteLogForm() {
           )}
         />
 
-        <Button type="submit" size="lg">Log Waste</Button>
+        <Button type="submit" size="lg" disabled={isLoading}>
+          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Log Waste
+        </Button>
       </form>
     </Form>
   );

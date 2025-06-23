@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -11,58 +10,79 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { mockVolunteers, getVolunteerById } from '@/lib/mockData'; 
-import { Loader2, Palette, User, Bell } from 'lucide-react';
+import { Loader2, Palette, User, Bell, MapPin, Navigation } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const currentVolunteerId = mockVolunteers[0]?.id;
+import { useAuth } from '@/context/AuthContext';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { UserProfile } from '@/lib/types';
+import Link from 'next/link';
+import { locationService } from '@/lib/location-service';
 
 const settingsFormSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  fullName: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email().optional(),
+  bio: z.string().optional(),
   enableEmailNotifications: z.boolean().default(false),
-  theme: z.string().default('light'), 
+  theme: z.string().default('light'),
+  enableLiveLocation: z.boolean().default(false),
+  locationUpdateInterval: z.string().default('5'),
 });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  // Removed initialTheme state, form will manage theme value
+  const [liveUserProfile, setLiveUserProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: { // Synchronous default values
-      name: '',
+    defaultValues: {
+      fullName: '',
       email: '',
+      bio: '',
       enableEmailNotifications: false,
-      theme: 'light', // Default theme, localStorage will override in useEffect
+      theme: 'light',
+      enableLiveLocation: false,
+      locationUpdateInterval: '5',
     },
   });
 
-  // Effect to load user-specific data and persisted theme from localStorage
+  // Real-time user profile listener
   useEffect(() => {
-    const volunteer = getVolunteerById(currentVolunteerId);
-    const lsTheme = localStorage.getItem('theme') || 'light';
-
-    let resetValues: SettingsFormValues = {
-      name: '',
-      email: '',
-      enableEmailNotifications: false, // Default, can be overridden by volunteer data if available
-      theme: lsTheme,
-    };
-
-    if (volunteer) {
-      resetValues.name = volunteer.name || '';
-      resetValues.email = volunteer.email || '';
-      // If you store notification preferences on the volunteer object, load them here:
-      // resetValues.enableEmailNotifications = volunteer.preferences?.emailNotifications ?? false;
+    if (!user?.uid) {
+      setLoading(false);
+      return;
     }
-    
-    form.reset(resetValues);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount to initialize form with potentially persisted data
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (doc) => {
+      if (doc.exists()) {
+        const userData = doc.data() as UserProfile;
+        setLiveUserProfile(userData);
+        
+        // Update form with live data
+        form.reset({
+          fullName: userData.fullName || '',
+          email: userData.email || '',
+          bio: userData.bio || '',
+          enableEmailNotifications: false, // Default, can be stored in user profile later
+          theme: localStorage.getItem('theme') || 'light',
+          enableLiveLocation: userData.enableLiveLocation || false,
+          locationUpdateInterval: userData.locationUpdateInterval || '5',
+        });
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error('Error listening to user profile:', error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, form]);
 
   const currentTheme = form.watch('theme');
 
@@ -77,27 +97,96 @@ export default function SettingsPage() {
         localStorage.setItem('theme', 'light');
       }
     }
-  }, [currentTheme]); // Re-run only when currentTheme (from form state) changes
-
+  }, [currentTheme]);
 
   const onSubmit = async (data: SettingsFormValues) => {
-    setIsLoading(true);
-    console.log("Settings data submitted:", data);
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const volunteer = getVolunteerById(currentVolunteerId);
-    if (volunteer) {
-      volunteer.name = data.name;
-      // In a real app, save other settings like data.enableEmailNotifications
+    if (!user?.uid || !liveUserProfile) {
+      toast({
+        title: "Error",
+        description: "User not found. Please try logging in again.",
+        variant: "destructive",
+      });
+      return;
     }
 
-    toast({
-      title: "Settings Saved!",
-      description: "Your preferences have been updated.",
-    });
-    setIsLoading(false);
+    setIsLoading(true);
+    try {
+      // Handle location tracking
+      if (data.enableLiveLocation) {
+        const hasPermission = await locationService.requestPermission();
+        if (!hasPermission) {
+          toast({
+            title: "Location Permission Required",
+            description: "Please allow location access to enable live tracking.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const trackingStarted = await locationService.startTracking(
+          user.uid,
+          data.locationUpdateInterval
+        );
+
+        if (!trackingStarted) {
+          toast({
+            title: "Location Tracking Failed",
+            description: "Could not start location tracking. Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        // Stop location tracking if disabled
+        locationService.stopTracking();
+      }
+
+      // Update user profile in Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        fullName: data.fullName,
+        bio: data.bio || '',
+        updatedAt: new Date().toISOString(),
+        enableLiveLocation: data.enableLiveLocation,
+        locationUpdateInterval: data.locationUpdateInterval,
+      });
+
+      toast({
+        title: "Settings Saved!",
+        description: data.enableLiveLocation 
+          ? "Your profile has been updated and location tracking is now active."
+          : "Your profile has been updated and location tracking has been disabled.",
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-theme(space.32))]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user || !userProfile || !liveUserProfile) {
+    return (
+      <div className="text-center py-10">
+        <p>Could not load user information. Please try logging in again.</p>
+        <Button asChild className="mt-4">
+          <Link href="/login">Go to Login</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -111,7 +200,7 @@ export default function SettingsPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="name"
+                name="fullName"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Full Name</FormLabel>
@@ -128,6 +217,17 @@ export default function SettingsPage() {
                     <FormLabel>Email Address</FormLabel>
                     <FormControl><Input placeholder="your@email.com" {...field} readOnly className="bg-muted/50 cursor-not-allowed" /></FormControl>
                     <FormDescription>Your email address is not editable here.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="bio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bio</FormLabel>
+                    <FormControl><Input placeholder="Tell us about yourself" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -193,6 +293,65 @@ export default function SettingsPage() {
                         </FormItem>
                         )}
                     />
+                </CardContent>
+              </Card>
+
+              <Card className="mt-8 pt-6">
+                <CardHeader className="pt-0">
+                  <CardTitle className="font-headline flex items-center"><MapPin className="mr-2 h-6 w-6 text-primary"/> Location Settings</CardTitle>
+                  <CardDescription>Manage your location sharing preferences for real-time tracking.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="enableLiveLocation"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Live Location Sharing</FormLabel>
+                          <FormDescription>
+                            Allow BeachGuardians to track your location during cleanup events for real-time coordination.
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {form.watch('enableLiveLocation') && (
+                    <FormField
+                      control={form.control}
+                      name="locationUpdateInterval"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Location Update Interval</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select update interval" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1">Every 1 minute</SelectItem>
+                              <SelectItem value="5">Every 5 minutes</SelectItem>
+                              <SelectItem value="10">Every 10 minutes</SelectItem>
+                              <SelectItem value="15">Every 15 minutes</SelectItem>
+                              <SelectItem value="30">Every 30 minutes</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            How often your location should be updated when participating in events.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </CardContent>
               </Card>
 

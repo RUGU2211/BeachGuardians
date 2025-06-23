@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -14,53 +13,32 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, Sun, Moon, LogOut, UserCircle, SettingsIcon, Loader2 } from 'lucide-react'; // Renamed Settings to SettingsIcon to avoid conflict
+import { Menu, Sun, Moon, LogOut, User, Settings, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { SidebarNavItems } from './SidebarNavItems'; // For mobile sheet
+import { SidebarNavItems } from './SidebarNavItems';
+import { Badge } from '@/components/ui/badge';
+import { LivePointsDisplay } from '@/components/gamification/LivePointsDisplay';
+import Image from 'next/image';
 
-interface HeaderProps {
-  title: string;
-}
-
-function BeachGuardiansIcon(props: React.SVGProps<SVGSVGElement>) {
+function BeachGuardiansLogo() {
   return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <path 
-        d="M12 2C11.14 2 7.58 2.84 5.03 4.12C2.48 5.4 2 7.81 2 10.25C2 15.31 6.91 20.25 12 22C17.09 20.25 22 15.31 22 10.25C22 7.81 21.52 5.4 18.97 4.12C16.42 2.84 12.86 2 12 2Z"
-        fill="hsl(var(--primary)/0.1)"
+    <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold font-headline">
+      <Image 
+        src="/logo.jpg" 
+        alt="BeachGuardians Logo" 
+        width={32} 
+        height={32} 
+        className="h-8 w-8"
       />
-      <path d="M11 10V14" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M9.5 14C10.5 13.5 11.5 13.5 12.5 14" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" fill="none"/>
-      <path d="M11 10L9 8" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L13 8" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L10 7" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M11 10L12 7" stroke="hsl(var(--primary))" strokeWidth="1" strokeLinecap="round" />
-      <path d="M7 18C9 16.5 11 16.5 13 18" stroke="hsl(var(--accent))" strokeWidth="1" strokeLinecap="round" fill="none"/>
-      <path d="M10 20C12 18.5 14 18.5 16 20" stroke="hsl(var(--accent))" strokeWidth="1" strokeLinecap="round" fill="none" opacity="0.7"/>
-      <path 
-        d="M12 2C11.14 2 7.58 2.84 5.03 4.12C2.48 5.4 2 7.81 2 10.25C2 15.31 6.91 20.25 12 22C17.09 20.25 22 15.31 22 10.25C22 7.81 21.52 5.4 18.97 4.12C16.42 2.84 12.86 2 12 2Z" 
-        stroke="hsl(var(--primary))" 
-        strokeWidth="1.5" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-        fill="none" 
-      />
-    </svg>
+      <span>BeachGuardians</span>
+    </Link>
   );
 }
 
-export function Header({ title }: HeaderProps) {
-  const { currentUser, loading: authLoading } = useAuth();
+export function Header({ title }: { title: string }) {
+  const { user, userProfile, logout } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   
@@ -79,7 +57,7 @@ export function Header({ title }: HeaderProps) {
   }, []);
 
   useEffect(() => {
-    if (!isClient) return; // Ensure this only runs client-side
+    if (!isClient) return;
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -93,21 +71,40 @@ export function Header({ title }: HeaderProps) {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  const handleLogout = async () => {
+  const handleSignOut = async () => {
     try {
-      await auth.signOut();
+      await logout();
       toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
-      router.push('/login'); // router should be available from useRouter
+      router.push('/login');
     } catch (error) {
       console.error('Logout failed:', error);
       toast({ title: 'Logout Failed', description: 'Could not log out. Please try again.', variant: 'destructive' });
     }
   };
 
-  const userInitials = currentUser?.displayName?.split(' ').map(n => n[0]).join('') || currentUser?.email?.charAt(0).toUpperCase() || 'U';
-  const userDisplayName = currentUser?.displayName || currentUser?.email || 'User';
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
-  if (!isClient) { // Or use authLoading to determine placeholder rendering
+  const getDisplayName = () => {
+    if (userProfile?.fullName) return userProfile.fullName;
+    if (user?.displayName) return user.displayName;
+    if (user?.email) return user.email.split('@')[0];
+    return 'User';
+  };
+
+  const getAvatarUrl = () => {
+    if (userProfile?.avatarUrl) return userProfile.avatarUrl;
+    if (user?.photoURL) return user.photoURL;
+    return undefined;
+  };
+
+  if (!isClient) {
     return (
       <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
         <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
@@ -130,10 +127,7 @@ export function Header({ title }: HeaderProps) {
           </SheetTrigger>
           <SheetContent side="left" className="p-0 flex flex-col">
             <div className="p-4 border-b">
-              <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold font-headline">
-                <BeachGuardiansIcon className="h-7 w-7 text-primary" />
-                <span>BeachGuardians</span>
-              </Link>
+              <BeachGuardiansLogo />
             </div>
             <div className="flex-grow overflow-y-auto">
                 <SidebarNavItems />
@@ -143,43 +137,92 @@ export function Header({ title }: HeaderProps) {
       </div>
 
       <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
+        <div className="hidden md:flex">
+          <BeachGuardiansLogo />
+        </div>
         <h1 className="text-xl font-semibold md:text-2xl flex-1 font-headline">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={toggleTheme}>
             <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           </Button>
-          {authLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          ) : currentUser ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={currentUser.photoURL || `https://placehold.co/40x40.png?text=${userInitials}`} alt={userDisplayName} data-ai-hint="person avatar"/>
-                    <AvatarFallback>{userInitials}</AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{userDisplayName}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/profile"><UserCircle className="mr-2 h-4 w-4" />Profile</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings"><SettingsIcon className="mr-2 h-4 w-4" />Settings</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-             <Button asChild variant="outline">
-                <Link href="/login">Login</Link>
-             </Button>
+          {user && (
+            <div className="flex items-center space-x-4">
+              {userProfile && (
+                <div className="flex items-center space-x-2">
+                  {userProfile.role === 'admin' ? (
+                    <Badge variant={userProfile.isVerified ? "default" : "secondary"}>
+                      <Shield className="w-3 h-3 mr-1" />
+                      {userProfile.isVerified ? 'Verified Admin' : 'Pending Admin'}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">
+                      <User className="w-3 h-3 mr-1" />
+                      Volunteer
+                    </Badge>
+                  )}
+                  <LivePointsDisplay showIcon={true} showTrend={false} />
+                </div>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={getAvatarUrl()} alt={getDisplayName()} />
+                      <AvatarFallback>
+                        {getInitials(getDisplayName())}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{getDisplayName()}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                      {userProfile && (
+                        <div className="flex items-center space-x-1 mt-1">
+                          {userProfile.role === 'admin' ? (
+                            <>
+                              <Shield className="w-3 h-3" />
+                              <span className="text-xs">
+                                {userProfile.isVerified ? 'Verified Admin' : 'Pending Verification'}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <User className="w-3 h-3" />
+                              <span className="text-xs">Volunteer</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <a href="/profile" className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="/settings" className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
       </div>
