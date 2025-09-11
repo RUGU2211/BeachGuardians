@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
+import { getAdminRtdb } from '@/lib/firebase-admin';
 import { sendEmail } from '@/lib/email';
 import { getAdminVerificationEmailTemplate } from '@/lib/email-templates';
 
@@ -16,12 +16,9 @@ export async function POST(req: Request) {
     // 2. Set an expiration time (10 minutes from now)
     const otpExpires = Date.now() + 10 * 60 * 1000;
 
-    // 3. Update the user's document in Firestore
-    const userRef = adminDb.collection('users').doc(uid);
-    await userRef.update({
-      otp,
-      otpExpires,
-    });
+    // 3. Update the user's record in Realtime Database
+    const db = getAdminRtdb();
+    await db.ref(`users/${uid}`).update({ otp, otpExpires });
 
     // 4. Send the OTP to the user's email
     const { subject, html } = getAdminVerificationEmailTemplate(otp);

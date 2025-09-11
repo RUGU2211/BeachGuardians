@@ -24,7 +24,14 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
   const [isVerifying, setIsVerifying] = useState(false);
 
   const handleSendVerificationEmail = async () => {
-    if (!user || !userProfile) return;
+    if (!user || !userProfile || !userProfile.email) {
+      toast({
+        title: 'Missing info',
+        description: 'You must be signed in and have an email on your profile.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/auth/send-verification-otp', {
@@ -55,13 +62,21 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
   };
 
   const handleVerifyOtp = async () => {
-    if (!user || !otp) return;
+    if (!user) {
+      toast({ title: 'Not signed in', description: 'Please sign in first.', variant: 'destructive' });
+      return;
+    }
+    const sanitizedOtp = otp.replace(/\D/g, '').trim();
+    if (sanitizedOtp.length !== 6) {
+      toast({ title: 'Invalid code', description: 'Enter the 6-digit code.', variant: 'destructive' });
+      return;
+    }
     setIsVerifying(true);
     try {
       const response = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: user.uid, otp }),
+        body: JSON.stringify({ uid: user.uid, otp: sanitizedOtp }),
       });
       
       const data = await response.json();
@@ -71,12 +86,13 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
 
       toast({
         title: 'Success!',
-        description: 'Your admin account has been verified.',
+        description: 'Your admin account has been verified. Redirecting...',
       });
-      
-      // Refresh the user profile data and page
-      // Note: A full page reload might be needed if AuthContext doesn't auto-update
-      router.refresh();
+
+      // Give Firestore a brief moment to mirror the flag, then navigate
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 600);
 
     } catch (error: any) {
       toast({
@@ -121,13 +137,13 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
                   <Input 
                     type="text"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     maxLength={6}
                     placeholder="123456"
                     className="w-36"
                     aria-label="OTP Input"
                   />
-                  <Button onClick={handleVerifyOtp} disabled={isVerifying || otp.length !== 6}>
+                  <Button onClick={handleVerifyOtp} disabled={isVerifying || otp.replace(/\D/g, '').length !== 6}>
                     {isVerifying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Verify
                   </Button>

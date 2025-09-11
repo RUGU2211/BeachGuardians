@@ -21,6 +21,14 @@ const GenerateHeatmapImageOutputSchema = z.object({
 export type GenerateHeatmapImageOutput = z.infer<typeof GenerateHeatmapImageOutputSchema>;
 
 export async function generateHeatmapImage(input: GenerateHeatmapImageInput): Promise<GenerateHeatmapImageOutput> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    // Fallback: return a placeholder image to avoid breaking dashboard
+    return {
+      imageDataUri: 'data:image/svg+xml;base64,' + Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect width="800" height="400" fill="#f5f5f5"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-family="Arial" font-size="16">Heatmap unavailable (missing API key)</text></svg>`).toString('base64')
+    };
+  }
+
   const maxRetries = 3;
   let attempt = 0;
   while (attempt < maxRetries) {

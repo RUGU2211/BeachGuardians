@@ -3,6 +3,12 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: false,
   /* config options here */
+  serverExternalPackages: [
+    'handlebars',
+    'dotprompt',
+    '@genkit-ai/core',
+    'genkit',
+  ],
   typescript: {
     ignoreBuildErrors: true,
   },

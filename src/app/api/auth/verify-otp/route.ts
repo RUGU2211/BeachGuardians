@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
+import { getAdminRtdb, getAdminDb } from '@/lib/firebase-admin';
 
 export async function POST(req: Request) {
   try {
@@ -9,14 +9,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'UID and OTP are required' }, { status: 400 });
     }
 
-    const userRef = adminDb.collection('users').doc(uid);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
+    const db = getAdminRtdb();
+    const snap = await db.ref(`users/${uid}`).get();
+    const userData = snap.val();
+    if (!userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-
-    const userData = userDoc.data();
     const storedOtp = userData?.otp;
     const otpExpires = userData?.otpExpires;
 
@@ -30,19 +28,28 @@ export async function POST(req: Request) {
 
     if (Date.now() > otpExpires) {
       // Clear the expired OTP
-      await userRef.update({
-        otp: null,
-        otpExpires: null,
-      });
+      await db.ref(`users/${uid}`).update({ otp: null, otpExpires: null });
       return NextResponse.json({ error: 'OTP has expired. Please request a new one.' }, { status: 400 });
     }
 
     // OTP is valid, update user verification status
-    await userRef.update({
+    await db.ref(`users/${uid}`).update({
       isVerified: true,
-      otp: null, // Clear the OTP after successful verification
+      otp: null,
       otpExpires: null,
     });
+
+    // Also mirror verification to Firestore so the client profile reflects the change
+    try {
+      const adminDb = getAdminDb();
+      await adminDb.collection('users').doc(uid).set({
+        isVerified: true,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (mirrorErr) {
+      // Log and proceed; RTDB is the source of truth for OTP, but UI reads Firestore profile
+      console.error('Failed to mirror isVerified to Firestore:', mirrorErr);
+    }
 
     return NextResponse.json({ success: true, message: 'Account verified successfully.' });
   } catch (error) {

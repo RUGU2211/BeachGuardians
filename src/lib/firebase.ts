@@ -10,12 +10,12 @@ import type { UserProfile, UserRole, Event, WasteLog, LeaderboardEntry } from ".
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyBuB9kWfs_pn3HfnlG56i9des0D0Xjmp-s",
-  authDomain: "shoreline-tzs9g.firebaseapp.com",
-  projectId: "shoreline-tzs9g",
-  storageBucket: "shoreline-tzs9g.appspot.com", // Corrected common typo: firebasestorage.app -> .appspot.com
-  messagingSenderId: "44056276742",
-  appId: "1:44056276742:web:d0cfd815558a3be19af887"
+  apiKey: "AIzaSyBMW5xV-E06wadMsJFyRfrOiuyac1IETXk",
+  authDomain: "shoreline-tzs9g-47d06.firebaseapp.com",
+  projectId: "shoreline-tzs9g-47d06",
+  storageBucket: "shoreline-tzs9g-47d06.firebasestorage.app",
+  messagingSenderId: "1018083665520",
+  appId: "1:1018083665520:web:95232bef92621fb19fb6b5"
   // measurementId: "G-XXXXXXXXXX" // Optional
 };
 
