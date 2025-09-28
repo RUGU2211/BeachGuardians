@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { getLoginNotificationTemplate } from '@/lib/email-templates';
@@ -28,6 +28,10 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetStatus, setResetStatus] = useState<string | null>(null);
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -52,7 +56,7 @@ export default function LoginPage() {
 
       toast({
         title: 'Login Successful',
-        description: `Welcome back!`,
+        description: `Welcome!`,
       });
       router.push('/dashboard');
     } catch (error: any) {
@@ -63,6 +67,28 @@ export default function LoginPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!resetEmail) {
+      setResetStatus('Please enter your email address.');
+      return;
+    }
+    setResetLoading(true);
+    setResetStatus('Sending reset email...');
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      setResetStatus('Password reset email sent. Check your inbox.');
+      toast({
+        title: 'Reset Email Sent',
+        description: 'Please check your inbox to reset your password.',
+      });
+    } catch (error: any) {
+      setResetStatus(error?.message || 'Failed to send reset email.');
+      toast({ title: 'Reset Failed', description: error?.message || 'Error sending reset email.', variant: 'destructive' });
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -80,7 +106,7 @@ export default function LoginPage() {
             />
           </Link>
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-            Welcome Back!
+            Welcome!
           </CardTitle>
           <CardDescription className="text-gray-600 text-base">
             Enter your credentials to access your BeachGuardians account
@@ -151,9 +177,40 @@ export default function LoginPage() {
               Create one now
             </Link>
           </div>
-          <Link href="#" className="text-sm text-gray-500 hover:text-blue-600 text-center transition-colors">
+          <button
+            type="button"
+            onClick={() => setShowReset((v) => !v)}
+            className="text-sm text-gray-500 hover:text-blue-600 text-center transition-colors"
+          >
             Forgot your password?
-          </Link>
+          </button>
+
+          {showReset && (
+            <div className="w-full space-y-3 border rounded-md p-4 bg-muted/30">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email" className="text-sm font-medium text-gray-700">Enter your email</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={handlePasswordReset}
+                disabled={resetLoading}
+                className="w-full"
+              >
+                {resetLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Send Reset Email
+              </Button>
+              {resetStatus && (
+                <p className="text-xs text-muted-foreground text-center">{resetStatus}</p>
+              )}
+            </div>
+          )}
         </CardFooter>
       </Card>
     </div>

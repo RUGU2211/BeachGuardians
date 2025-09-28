@@ -26,7 +26,7 @@ export function SidebarNavItems() {
   const pathname = usePathname();
   const { userProfile, logout } = useAuth();
 
-  const isAdmin = userProfile?.role === 'admin' && userProfile?.isVerified === true;
+  const isAdmin = userProfile?.role === 'admin' && userProfile?.isAdminVerified === true;
 
   const handleSignOut = async () => {
     try {
@@ -58,7 +58,7 @@ export function SidebarNavItems() {
       icon: Trophy,
     },
     {
-      title: 'Live Map',
+      title: 'Event Map',
       href: '/map',
       icon: Map,
     },
@@ -76,27 +76,9 @@ export function SidebarNavItems() {
 
   const adminNavItems = [
     {
-      title: 'User Management',
-      href: '/admin/user-management',
-      icon: Users,
-      adminOnly: true,
-    },
-    {
       title: 'AI Content',
       href: '/admin/ai-content',
       icon: Sparkles,
-      adminOnly: true,
-    },
-    {
-      title: 'Engagement Tool',
-      href: '/admin/engagement-tool',
-      icon: MessageSquare,
-      adminOnly: true,
-    },
-    {
-      title: 'Event Summaries',
-      href: '/admin/event-summary',
-      icon: ClipboardList,
       adminOnly: true,
     },
     {

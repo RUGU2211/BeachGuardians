@@ -2,6 +2,19 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { Leaf, Award, Users, BarChart, Waves, Sun, ShieldCheck } from 'lucide-react';
+import Hero from '@/components/landing/Hero';
+import UpcomingEvents from '@/components/landing/UpcomingEvents';
+import UpcomingEventsAdvanced from '@/components/landing/UpcomingEventsAdvanced';
+import EventMapPreview from '@/components/landing/EventMapPreview';
+import LeaderboardHighlights from '@/components/landing/LeaderboardHighlights';
+import ImpactStats from '@/components/landing/ImpactStats';
+import AIChatbot from '@/components/landing/AIChatbot';
+import Testimonials from '@/components/landing/Testimonials';
+import HowItWorks from '@/components/landing/HowItWorks';
+import Partners from '@/components/landing/Partners';
+import NewsletterSignup from '@/components/landing/NewsletterSignup';
+import SustainabilityBlog from '@/components/landing/SustainabilityBlog';
+import LandingHeader from '@/components/layout/LandingHeader';
 // Removed: import { generateHeroImage } from '@/ai/flows/generate-hero-image-flow';
 
 function BeachGuardiansLogo() {
@@ -33,66 +46,15 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-[100dvh] bg-background text-foreground">
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-sm">
-        <div className="container mx-auto h-16 flex items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2" prefetch={false}>
-            <BeachGuardiansLogo />
-            <span className="text-xl font-bold text-primary">BeachGuardians</span>
-          </Link>
-          <nav className="flex items-center gap-4 sm:gap-6">
-            <Button variant="outline" asChild className="border-primary text-primary hover:bg-primary/10">
-              <Link href="/login" prefetch={false}>
-                Login
-              </Link>
-            </Button>
-            <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
-              <Link href="/signup" prefetch={false}>
-                Sign Up
-              </Link>
-            </Button>
-          </nav>
-        </div>
-      </header>
+      <LandingHeader />
 
       <main className="flex-1 pt-16">
         <div className="w-full flex flex-col items-center">
-          {/* Hero Section */}
-          <section className="w-full flex flex-col items-center justify-center text-center pt-16 pb-8 bg-background">
-            <div className="container px-4 md:px-6 space-y-6 text-center">
-              <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl xl:text-7xl/none font-headline text-primary">
-                Protect Our Shores, Preserve Our Future.
-              </h1>
-              <p className="max-w-[700px] mx-auto md:text-xl text-lg font-light text-foreground">
-                Join a global community of volunteers dedicated to keeping our beaches clean. Track your impact, earn rewards, and become a guardian of our coastlines.
-              </p>
-              <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-                <Button asChild size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg transition-transform transform hover:scale-105">
-                  <Link href="/signup" prefetch={false}>
-                    Start Your Journey
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" asChild className="border-accent text-accent hover:bg-accent/10 transition-transform transform hover:scale-105">
-                  <Link href="/events" prefetch={false}>
-                    Find a Cleanup Event
-                  </Link>
-                </Button>
-              </div>
-            </div>
-            <div className="relative w-full flex justify-center mt-12">
-              <div className="w-full max-w-5xl h-[340px] md:h-[480px] relative">
-                <Image
-                  src="/image1.png"
-                  alt="A pristine beach with clear blue water"
-                  fill
-                  className="object-cover rounded-xl shadow-xl"
-                  priority
-                />
-              </div>
-            </div>
-          </section>
+          {/* Advanced Hero Section */}
+          <Hero />
 
           {/* Features Section */}
-          <section className="w-full py-16 md:py-24 lg:py-32 bg-white flex flex-col items-center">
+          <section id="features" className="w-full py-16 md:py-24 lg:py-32 bg-white flex flex-col items-center">
             <div className="w-full max-w-4xl px-4 md:px-6 flex flex-col items-center text-center space-y-4 mb-12">
               <div className="inline-block rounded-lg bg-primary/10 px-4 py-2 text-sm text-primary font-semibold tracking-wide">
                   WHY JOIN US?
@@ -121,27 +83,48 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* How It Works Section */}
-          <section className="w-full py-16 md:py-24 lg:py-32 bg-muted/40 flex flex-col items-center">
-            <div className="w-full max-w-3xl px-4 md:px-6 flex flex-col items-center text-center space-y-4">
-              <div className="inline-block rounded-lg bg-primary/10 px-4 py-2 text-sm text-primary font-semibold tracking-wide">
-                  GETTING STARTED
-              </div>
-              <h2 className="text-3xl font-bold tracking-tighter md:text-4xl/tight text-gray-800">
-                  Three Steps to a Cleaner Coastline
-              </h2>
-              <p className="mx-auto max-w-2xl text-gray-600 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  It's simple to get started. Find an event, join in, and see the difference you make.
-              </p>
-            </div>
-            <div className="mx-auto w-full max-w-4xl pt-12">
-              <div className="grid gap-8 md:grid-cols-3">
-                <StepCard icon={<Sun className="h-8 w-8 text-primary"/>} title="1. Discover" description="Find local events or start your own beach cleanup initiative." />
-                <StepCard icon={<Leaf className="h-8 w-8 text-primary"/>} title="2. Contribute" description="Participate, log your collected waste, and help our environment." />
-                <StepCard icon={<ShieldCheck className="h-8 w-8 text-primary"/>} title="3. Inspire" description="Share your achievements and motivate others to join the cause." />
-              </div>
-            </div>
-          </section>
+          {/* How It Works Section (updated per request) */}
+          <div id="how-it-works" className="w-full">
+            <HowItWorks />
+          </div>
+
+          {/* Upcoming Events */}
+          <div id="events" className="w-full">
+            <UpcomingEventsAdvanced />
+          </div>
+
+          {/* Event Map Preview */}
+          <div id="map" className="w-full">
+            <EventMapPreview />
+          </div>
+
+          {/* Leaderboard & Rewards Highlights */}
+          <div id="leaderboard" className="w-full">
+            <LeaderboardHighlights />
+          </div>
+
+          {/* Impact Statistics (Live Counters) */}
+          <div id="impact" className="w-full">
+            <ImpactStats />
+          </div>
+
+          {/* Testimonials / Stories */}
+          <div id="stories" className="w-full">
+            <Testimonials />
+          </div>
+
+          {/* Partner NGOs & Sponsors */}
+          <div id="partners" className="w-full">
+            <Partners />
+          </div>
+
+          {/* Newsletter & Notifications Signup */}
+          <NewsletterSignup />
+
+          {/* Sustainability Blog / Resources */}
+          <div id="blog" className="w-full">
+            <SustainabilityBlog />
+          </div>
 
           {/* Final CTA Section */}
           <section className="w-full py-16 md:py-24 lg:py-32 bg-primary text-primary-foreground flex flex-col items-center">
@@ -161,18 +144,45 @@ export default function HomePage() {
       </main>
 
       <footer className="bg-muted/40 p-6 md:py-8 w-full">
-         <div className="container mx-auto flex flex-col md:flex-row items-center justify-between">
-            <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} BeachGuardians. All rights reserved.</p>
-            <nav className="flex gap-4 sm:gap-6 mt-4 md:mt-0">
-                <Link href="#" className="text-sm hover:text-primary hover:underline underline-offset-4" prefetch={false}>
-                    Terms of Service
-                </Link>
-                <Link href="#" className="text-sm hover:text-primary hover:underline underline-offset-4" prefetch={false}>
-                    Privacy
-                </Link>
-            </nav>
-        </div>
-    </footer>
+         <div className="container mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <BeachGuardiansLogo />
+                <span className="text-lg font-bold">BeachGuardians</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Join hands to clean, care & celebrate.</p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-2">Quick Links</h4>
+              <div className="flex flex-col gap-1 text-sm">
+                <Link href="/about" className="hover:underline">About Us</Link>
+                <Link href="/contact" className="hover:underline">Contact</Link>
+                <Link href="/faq" className="hover:underline">FAQ</Link>
+                <Link href="/events" className="hover:underline">Events</Link>
+                <Link href="/leaderboard" className="hover:underline">Leaderboard</Link>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-2">Legal</h4>
+              <div className="flex flex-col gap-1 text-sm">
+                <Link href="/terms" className="hover:underline">Terms of Service</Link>
+                <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-2">Follow</h4>
+              <div className="flex gap-3 text-sm">
+                <Link href="#" className="hover:underline">Twitter</Link>
+                <Link href="#" className="hover:underline">Instagram</Link>
+                <Link href="#" className="hover:underline">Facebook</Link>
+              </div>
+            </div>
+         </div>
+         <div className="container mx-auto mt-6 text-xs text-muted-foreground">&copy; {new Date().getFullYear()} BeachGuardians. All rights reserved.</div>
+      </footer>
+
+      {/* AI Chatbot Assistant */}
+      <AIChatbot />
     </div>
   );
 }
@@ -191,16 +201,4 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode, titl
   );
 }
 
-function StepCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
-    return (
-        <div className="flex flex-col items-center space-y-4">
-            <div className="p-3 border-2 border-dashed border-primary/50 rounded-full">
-                {icon}
-            </div>
-            <div className="space-y-2 text-center">
-                <h3 className="text-lg font-bold">{title}</h3>
-                <p className="text-muted-foreground">{description}</p>
-            </div>
-        </div>
-    );
-}
+// StepCard removed; replaced by dedicated HowItWorks component

@@ -50,6 +50,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (newUser) {
         setLoading(true);
+        // Attempt to sync verification flags from RTDB mirror into Firestore
+        try {
+          await fetch('/api/users/sync-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: newUser.uid }),
+          });
+        } catch (syncErr) {
+          console.warn('Verification sync failed (non-fatal):', syncErr);
+        }
         let profile = null;
         // Retry fetching profile a few times to deal with replication lag
         for (let i = 0; i < 3; i++) {

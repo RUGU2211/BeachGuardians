@@ -37,5 +37,12 @@ export async function generateHeroImage(input: GenerateHeroImageInput): Promise<
     Focus on powerful, inspiring imagery: clean beaches, volunteers in action, marine life, and a hopeful, vibrant atmosphere.
   `;
   const imageUrl = await generateEventImage({ prompt, format: input.format });
-  return { imageDataUri: imageUrl };
+  if (imageUrl) {
+    return { imageDataUri: imageUrl };
+  }
+  // Fallback placeholder when OpenAI is not configured or fails
+  const placeholder = input.format === 'banner'
+    ? 'https://placehold.co/1200x675/4ade80/ffffff?text=Beach+Cleanup+Banner'
+    : 'https://placehold.co/800x1000/4ade80/ffffff?text=Beach+Cleanup+Poster';
+  return { imageDataUri: placeholder };
 }

@@ -151,9 +151,9 @@ export function Header({ title }: { title: string }) {
               {userProfile && (
                 <div className="flex items-center space-x-2">
                   {userProfile.role === 'admin' ? (
-                    <Badge variant={userProfile.isVerified ? "default" : "secondary"}>
-                      <Shield className="w-3 h-3 mr-1" />
-                      {userProfile.isVerified ? 'Verified Admin' : 'Pending Admin'}
+                    <Badge variant={userProfile.isAdminVerified ? "default" : "secondary"}>
+                  <Shield className="w-3 h-3 mr-1" />
+                  {userProfile.isAdminVerified ? 'Verified Admin' : 'Pending Admin'}
                     </Badge>
                   ) : (
                     <Badge variant="outline">
@@ -189,7 +189,7 @@ export function Header({ title }: { title: string }) {
                             <>
                               <Shield className="w-3 h-3" />
                               <span className="text-xs">
-                                {userProfile.isVerified ? 'Verified Admin' : 'Pending Verification'}
+                                {userProfile.isAdminVerified ? 'Verified Admin' : 'Pending Verification'}
                               </span>
                             </>
                           ) : (

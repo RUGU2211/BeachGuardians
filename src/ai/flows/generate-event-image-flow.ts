@@ -23,17 +23,25 @@ const GenerateEventImageOutputSchema = z.object({
 export type GenerateEventImageOutput = z.infer<typeof GenerateEventImageOutputSchema>;
 
 export async function generateEventImage(input: GenerateEventImageInput): Promise<GenerateEventImageOutput> {
-  const aspect = input.format === 'banner' ? 'landscape banner (16:9)' : 'portrait poster (4:5)';
-  const prompt = `
-    Create a high-quality, visually appealing event ${input.format} for a community event focused on environmental cleanup or local gathering.
-    Event Name: "${input.eventName}"
-    Event Description: "${input.eventDescription}"
-    Artistic Style: vibrant, hopeful, and inspiring.
-    Format: ${aspect}
-    The image should be in a ${aspect} aspect ratio, suitable for use on social media.
-    Do NOT include any text or writing.
-    Evoke themes of nature, community spirit, and positive action.
-  `;
-  const imageUrl = await generateDalleEventImage({ prompt, format: input.format });
-  return { imageDataUri: imageUrl };
+  try {
+    const aspect = input.format === 'banner' ? 'landscape banner (16:9)' : 'portrait poster (4:5)';
+    const prompt = `Create a high-quality promotional ${input.format} for a beach cleanup event.\nEvent Name: "${input.eventName}"\nDescription: "${input.eventDescription}"\nFormat: ${aspect}\nArtistic style: vibrant, inspiring, digital art.\nDo NOT include any text or writing. Focus on clean beaches, volunteers in action, and marine life.`;
+
+    const imageUrl = await generateDalleEventImage({ prompt });
+    
+    if (imageUrl) {
+      return { imageDataUri: imageUrl };
+    } else {
+      // Return a placeholder image if generation fails or API key is not available
+      const placeholderUrl = "https://placehold.co/800x1000/4ade80/ffffff?text=Beach+Cleanup+Poster";
+      return { imageDataUri: input.format === 'banner' ? 'https://placehold.co/1200x675/4ade80/ffffff?text=Beach+Cleanup+Banner' : placeholderUrl };
+    }
+  } catch (error) {
+    console.error('Error in generateEventImage flow:', error);
+    // Return a placeholder image on error
+    const placeholderUrl = input.format === 'banner'
+      ? 'https://placehold.co/1200x675/4ade80/ffffff?text=Beach+Cleanup+Banner'
+      : 'https://placehold.co/800x1000/4ade80/ffffff?text=Beach+Cleanup+Poster';
+    return { imageDataUri: placeholderUrl };
+  }
 }

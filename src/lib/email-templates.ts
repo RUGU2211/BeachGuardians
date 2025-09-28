@@ -90,4 +90,32 @@ export function getAdminVerificationEmailTemplate(otp: string) {
     </div>
   `;
   return { subject, html };
-} 
+}
+
+/**
+ * Generates the email content for volunteer OTP verification during registration.
+ */
+export function getVolunteerVerificationEmailTemplate(name: string, otp: string) {
+  const subject = 'Verify Your BeachGuardians Account';
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Welcome to BeachGuardians, ${name}!</h2>
+      <p>Thank you for joining our community of environmental champions. To complete your registration and verify your email address, please use the following verification code:</p>
+      <p style="font-size: 24px; font-weight: bold; letter-spacing: 2px; margin: 20px 0; text-align: center; color: #007bff;">
+        ${otp}
+      </p>
+      <p>This verification code will expire in 10 minutes. Please enter this code on the registration page to complete your account setup.</p>
+      <p>Once verified, you'll be able to:</p>
+      <ul>
+        <li>Join beach cleanup events in your area</li>
+        <li>Track your environmental impact</li>
+        <li>Connect with other volunteers</li>
+        <li>Earn points and achievements</li>
+      </ul>
+      <p>If you did not create this account, please disregard this email.</p>
+      <p>Together, we can make our coastlines cleaner and healthier!</p>
+      <p>Best regards,<br/>The BeachGuardians Team</p>
+    </div>
+  `;
+  return { subject, html };
+}

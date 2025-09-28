@@ -114,7 +114,8 @@ export default function ProtectedRoute({
   }
 
   // Check verification requirement
-  if (requireVerification && !userProfile.isVerified) {
+  const isVerified = userProfile.role === 'admin' ? userProfile.isAdminVerified : userProfile.isVerified;
+  if (requireVerification && !isVerified) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -154,4 +155,4 @@ export default function ProtectedRoute({
 
   // All checks passed, render children
   return <>{children}</>;
-} 
+}

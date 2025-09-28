@@ -14,31 +14,49 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { generateEventImage } from '@/ai/flows/generate-event-image-flow';
-import type { Event } from '@/lib/types';
+import type { Event, EventCategory } from '@/lib/types';
 import React from 'react';
 import { getNewEventNotificationTemplate } from '@/lib/email-templates';
 import { sendEmailFromClient } from '@/lib/client-email';
 import { collection, getDocs, addDoc } from 'firebase/firestore';
-import { db, storage } from '@/lib/firebase';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db } from '@/lib/firebase';
+import { LocationPicker } from './LocationPicker';
+import type { EventLocationDetails } from '@/lib/event-location-utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { searchIndianLocations, type IndianLocationDetails } from '@/lib/indian-location-service';
 
 const eventFormSchema = z.object({
   name: z.string().min(3, { message: 'Event name must be at least 3 characters.' }),
-  date: z.date({ required_error: 'Event date is required.' }),
-  time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]\s*-\s*([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-    message: 'Time must be in HH:MM - HH:MM format (e.g., 09:00 - 12:00).',
+  startDate: z.date({ required_error: 'Start date is required.' }),
+  endDate: z.date({ required_error: 'End date is required.' }),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'Start time must be in HH:MM format (e.g., 09:00).',
+  }),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+    message: 'End time must be in HH:MM format (e.g., 12:00).',
+  }),
+  category: z.enum(['beach_cleanup', 'river_cleanup', 'park_cleanup', 'street_cleanup', 'awareness_campaign', 'tree_planting', 'recycling_drive', 'educational_workshop'], {
+    required_error: 'Please select an event category.',
   }),
   location: z.string().min(5, { message: 'Location must be at least 5 characters.' }),
   description: z.string().min(10, { message: 'Description must be at least 10 characters.' }).max(500, {message: 'Description must be less than 500 characters.'}),
   organizer: z.string().min(2, { message: 'Organizer name must be at least 2 characters.' }),
+}).refine((data) => {
+  const startDateTime = new Date(`${data.startDate.toDateString()} ${data.startTime}`);
+  const endDateTime = new Date(`${data.endDate.toDateString()} ${data.endTime}`);
+  return endDateTime > startDateTime;
+}, {
+  message: "End date and time must be after start date and time.",
+  path: ["endDate"],
 });
 
 type EventFormValues = z.infer<typeof eventFormSchema>;
 
 const defaultValues: Partial<EventFormValues> = {
   name: '',
-  time: '09:00 - 12:00',
+  startTime: '09:00',
+  endTime: '12:00',
+  category: 'beach_cleanup' as EventCategory,
   location: '',
   description: '',
   organizer: 'BeachGuardians Community',
@@ -48,6 +66,7 @@ export function EventForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [locationDetails, setLocationDetails] = React.useState<EventLocationDetails | undefined>();
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventFormSchema),
@@ -57,62 +76,85 @@ export function EventForm() {
 
   async function onSubmit(data: EventFormValues) {
     setIsSubmitting(true);
-    let eventImageUrl = "https://placehold.co/600x400.png"; // Default placeholder
 
-    try {
-      toast({
-        title: "Generating Event Image...",
-        description: "Please wait while we create a unique image for your event.",
-      });
-      const imageResult = await generateEventImage({
-        eventName: data.name,
-        eventDescription: data.description,
-      });
+    // Sanitize locationDetails to remove undefined values
+    let sanitizedLocationDetails: EventLocationDetails | undefined = locationDetails ? {
+      // Only include address if present
+      ...(locationDetails.address !== undefined && { address: locationDetails.address }),
+      // Only include coordinates if both latitude and longitude are present
+      ...(locationDetails.coordinates?.latitude !== undefined && locationDetails.coordinates?.longitude !== undefined && {
+        coordinates: {
+          latitude: locationDetails.coordinates.latitude,
+          longitude: locationDetails.coordinates.longitude,
+        },
+      }),
+      // Include common optional fields when present
+      ...(locationDetails.city !== undefined && { city: locationDetails.city }),
+      ...(locationDetails.state !== undefined && { state: locationDetails.state }),
+      ...(locationDetails.country !== undefined && { country: locationDetails.country }),
+      ...(locationDetails.postalCode !== undefined && { postalCode: locationDetails.postalCode }),
+      // Keep any extended fields from India geocoding if present
+      ...(locationDetails.district !== undefined && { district: locationDetails.district as any }),
+      ...(locationDetails.subDistrict !== undefined && { subDistrict: locationDetails.subDistrict as any }),
+      ...(locationDetails.placeId !== undefined && { placeId: locationDetails.placeId }),
+    } : undefined;
 
-      if (imageResult?.imageDataUri) {
-        try {
-          toast({
-            title: "AI Image Generated",
-            description: "Now uploading to storage...",
-          });
-          const storageRef = ref(storage, `event-posters/${data.name.replace(/\s+/g, '-')}-${Date.now()}.jpg`);
-          // The string is a data URL: "data:image/jpeg;base64,..."
-          // We need to upload it as a 'data_url'
-          const snapshot = await uploadString(storageRef, imageResult.imageDataUri, 'data_url');
-          eventImageUrl = await getDownloadURL(snapshot.ref);
-           toast({
-            title: "Image Uploaded Successfully!",
-            description: "Your event poster is ready.",
-          });
-        } catch (uploadError) {
-          console.error("Error uploading event image to Firebase Storage:", uploadError);
-          toast({
-            title: "Image Upload Failed",
-            description: "Could not upload the AI image. Using a default placeholder.",
-            variant: "destructive",
-          });
+    // If no locationDetails or coordinates are missing/zero, attempt geocoding restricted to India
+    const coordsAreMissing = !sanitizedLocationDetails?.coordinates ||
+      (sanitizedLocationDetails?.coordinates.latitude === 0 && sanitizedLocationDetails?.coordinates.longitude === 0);
+
+    if (!sanitizedLocationDetails || coordsAreMissing) {
+      try {
+        const results: IndianLocationDetails[] = await searchIndianLocations(data.location);
+        if (results && results.length > 0) {
+          const first = results[0];
+          sanitizedLocationDetails = {
+            ...(first.address !== undefined && { address: first.address }),
+            ...(first.coordinates?.latitude !== undefined && first.coordinates?.longitude !== undefined && {
+              coordinates: {
+                latitude: first.coordinates.latitude,
+                longitude: first.coordinates.longitude,
+              },
+            }),
+            ...(first.placeId !== undefined && { placeId: first.placeId }),
+            ...(first.city !== undefined && { city: first.city }),
+            ...(first.state !== undefined && { state: first.state }),
+            ...(first.country !== undefined && { country: first.country }),
+            ...(first.postalCode !== undefined && { postalCode: first.postalCode }),
+          } as any;
+        } else {
+          throw new Error('No matching Indian address found');
         }
-      } else {
-         throw new Error("Image generation did not return a data URI.");
+      } catch (geoErr) {
+        console.error('Geocoding failed:', geoErr);
+        setIsSubmitting(false);
+        return toast({
+          title: 'Invalid Location',
+          description: 'Please enter a valid Indian address and pick a suggestion.',
+          variant: 'destructive',
+        });
       }
-    } catch (error) {
-      console.error('Error generating event image:', error);
-      toast({
-        title: "Image Generation Failed",
-        description: "Could not generate an AI image. Using a default placeholder.",
-        variant: "destructive",
-      });
     }
 
     const newEventData = {
       name: data.name,
-      date: data.date.toISOString(),
-      time: data.time,
+      date: data.startDate.toISOString(), // Keep for backward compatibility
+      time: `${data.startTime} - ${data.endTime}`, // Keep for backward compatibility
+      startDate: data.startDate,
+      endDate: data.endDate,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      category: data.category,
       location: data.location,
+      locationDetails: sanitizedLocationDetails,
+      // Mirror flat location fields for backend compatibility
+      event_location: sanitizedLocationDetails?.address || data.location,
+      latitude: sanitizedLocationDetails?.coordinates?.latitude,
+      longitude: sanitizedLocationDetails?.coordinates?.longitude,
       description: data.description,
       organizer: data.organizer,
       volunteers: [],
-      mapImageUrl: eventImageUrl,
+      mapImageUrl: (await import('@/lib/event-images')).getRandomEventImage(),
       status: 'upcoming' as const,
       wasteCollectedKg: 0,
     };
@@ -126,9 +168,17 @@ export function EventForm() {
         description: `${data.name} has been successfully scheduled.`,
       });
 
-      // Note: Email notifications removed to fix Firebase permission issues
-      // In a production app, this would be handled by a server-side function
-      
+      // Broadcast email notifications to volunteers and admins
+      try {
+        await fetch('/api/events/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: docRef.id }),
+        });
+      } catch (broadcastErr) {
+        console.warn('Broadcast email failed or not configured:', broadcastErr);
+      }
+
       router.push('/events');
       router.refresh();
 
@@ -165,10 +215,10 @@ export function EventForm() {
         <div className="grid md:grid-cols-2 gap-8">
           <FormField
             control={form.control}
-            name="date"
+            name="startDate"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <FormLabel>Event Date</FormLabel>
+                <FormLabel>Start Date</FormLabel>
                 <Popover>
                   <PopoverTrigger asChild>
                     <FormControl>
@@ -179,7 +229,7 @@ export function EventForm() {
                           !field.value && 'text-muted-foreground'
                         )}
                       >
-                        {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                        {field.value ? format(field.value, 'PPP') : <span>Pick a start date</span>}
                         <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                       </Button>
                     </FormControl>
@@ -194,7 +244,7 @@ export function EventForm() {
                     />
                   </PopoverContent>
                 </Popover>
-                <FormDescription>Select the date for the event.</FormDescription>
+                <FormDescription>Select the start date for the event.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -202,14 +252,68 @@ export function EventForm() {
 
           <FormField
             control={form.control}
-            name="time"
+            name="endDate"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>End Date</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={'outline'}
+                        className={cn(
+                          'w-full pl-3 text-left font-normal',
+                          !field.value && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value ? format(field.value, 'PPP') : <span>Pick an end date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormDescription>Select the end date for the event.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8">
+          <FormField
+            control={form.control}
+            name="startTime"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Event Time</FormLabel>
+                <FormLabel>Start Time</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g., 10:00 - 14:00" {...field} />
+                  <Input placeholder="e.g., 09:00" {...field} />
                 </FormControl>
-                <FormDescription>Specify the start and end time (HH:MM - HH:MM).</FormDescription>
+                <FormDescription>Start time in HH:MM format (24-hour).</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="endTime"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>End Time</FormLabel>
+                <FormControl>
+                  <Input placeholder="e.g., 12:00" {...field} />
+                </FormControl>
+                <FormDescription>End time in HH:MM format (24-hour).</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -218,14 +322,51 @@ export function EventForm() {
 
         <FormField
           control={form.control}
+          name="category"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Event Category</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an event category" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="beach_cleanup">Beach Cleanup</SelectItem>
+                  <SelectItem value="river_cleanup">River Cleanup</SelectItem>
+                  <SelectItem value="park_cleanup">Park Cleanup</SelectItem>
+                  <SelectItem value="street_cleanup">Street Cleanup</SelectItem>
+                  <SelectItem value="awareness_campaign">Awareness Campaign</SelectItem>
+                  <SelectItem value="tree_planting">Tree Planting</SelectItem>
+                  <SelectItem value="recycling_drive">Recycling Drive</SelectItem>
+                  <SelectItem value="educational_workshop">Educational Workshop</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormDescription>Choose the type of environmental event.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
           name="location"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Location</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., Sunnyvale Beach, Main Entrance" {...field} />
+                <LocationPicker
+                  value={field.value}
+                  locationDetails={locationDetails}
+                  onChange={(location, details) => {
+                    field.onChange(location);
+                    setLocationDetails(details);
+                  }}
+                  placeholder="Search for event location..."
+                />
               </FormControl>
-              <FormDescription>Detailed address or meeting point for the event.</FormDescription>
+              <FormDescription>Search and select the exact location for your event.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -267,7 +408,7 @@ export function EventForm() {
 
         <Button type="submit" size="lg" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isSubmitting ? 'Creating Event...' : 'Create Event & Generate Image'}
+          {isSubmitting ? 'Creating Event...' : 'Create Event'}
         </Button>
       </form>
     </Form>

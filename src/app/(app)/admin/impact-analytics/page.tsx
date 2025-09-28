@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BarChart, Map, Download, Loader2, Users, Trash2, Calendar, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -25,10 +26,18 @@ export default function ImpactAnalyticsPage() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { userProfile, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    fetchAnalyticsData();
-  }, []);
+    // Only fetch analytics for verified admin users
+    if (!authLoading && userProfile?.role === 'admin' && userProfile?.isAdminVerified) {
+      fetchAnalyticsData();
+    } else if (!authLoading) {
+      // Stop loading state if user is not permitted, ProtectedRoute will render the guard
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, userProfile?.role, userProfile?.isAdminVerified]);
 
   const fetchAnalyticsData = async () => {
     try {
@@ -320,4 +329,4 @@ export default function ImpactAnalyticsPage() {
       </div>
     </ProtectedRoute>
   );
-} 
+}

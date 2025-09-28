@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Palette, User, Bell, MapPin, Navigation, Shield, Settings, Users, Activity } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/context/AuthContext';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { UserProfile } from '@/lib/types';
 import Link from 'next/link';
@@ -60,20 +60,51 @@ export default function AdminSettingsPage() {
     },
   });
 
-  // Real-time user profile listener
+  // Profile loading: gate realtime in dev unless explicitly enabled
   useEffect(() => {
+    const enableRealtime = process.env.NEXT_PUBLIC_ENABLE_REALTIME === 'true';
     if (!user?.uid) {
       setLoading(false);
       return;
     }
 
     const userDocRef = doc(db, 'users', user.uid);
+    if (!enableRealtime) {
+      // One-off fetch when realtime disabled
+      (async () => {
+        try {
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            const userData = snap.data() as UserProfile;
+            setLiveUserProfile(userData);
+            form.reset({
+              fullName: userData.fullName || '',
+              email: userData.email || '',
+              bio: userData.bio || '',
+              enableEmailNotifications: false,
+              theme: localStorage.getItem('theme') || 'light',
+              enableLiveLocation: userData.enableLiveLocation || false,
+              locationUpdateInterval: userData.locationUpdateInterval || '5',
+              enableRealTimeMonitoring: true,
+              enableVolunteerTracking: true,
+              enableEventNotifications: true,
+              enableAnalyticsAlerts: true,
+            });
+          }
+        } catch (err) {
+          console.error('Error fetching admin user profile:', err);
+        } finally {
+          setLoading(false);
+        }
+      })();
+      return;
+    }
+
+    // Realtime listener when enabled
     const unsubscribe = onSnapshot(userDocRef, (doc) => {
       if (doc.exists()) {
         const userData = doc.data() as UserProfile;
         setLiveUserProfile(userData);
-        
-        // Update form with live data
         form.reset({
           fullName: userData.fullName || '',
           email: userData.email || '',
@@ -212,7 +243,7 @@ export default function AdminSettingsPage() {
       <div className="text-center py-10">
         <p>Could not load user information. Please try logging in again.</p>
         <Button asChild className="mt-4">
-          <Link href="/login">Go to Login</Link>
+          <Link href="/login" prefetch={false}>Go to Login</Link>
         </Button>
       </div>
     );

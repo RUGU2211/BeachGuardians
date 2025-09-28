@@ -51,6 +51,15 @@ export const mockEvents: Event[] = [
     date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
     time: '9:00 AM - 12:00 PM',
     location: 'Sunnyvale Beach, Main Entrance',
+    locationDetails: {
+      address: 'Sunnyvale Beach, Main Entrance',
+      coordinates: { latitude: 37.4419, longitude: -122.1430 },
+      placeId: 'ChIJLWto4y29j4ARVNrpTrHmhrk',
+      city: 'Sunnyvale',
+      state: 'California',
+      country: 'United States',
+      postalCode: '94089'
+    },
     description: 'Join us for our biggest cleanup event of the year! Help us keep Sunnyvale Beach pristine. Gloves and bags will be provided.',
     organizer: 'Shoreline Foundation',
     volunteers: ['vol1', 'vol2', 'vol3'],
@@ -64,6 +73,15 @@ export const mockEvents: Event[] = [
     date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14 days from now
     time: '10:00 AM - 1:00 PM',
     location: 'Riverside Park, Near the Old Oak Tree',
+    locationDetails: {
+      address: 'Riverside Park, Near the Old Oak Tree',
+      coordinates: { latitude: 37.4224, longitude: -122.0856 },
+      placeId: 'ChIJP2dX1yK6j4ARtlw5IHFUmhk',
+      city: 'Mountain View',
+      state: 'California',
+      country: 'United States',
+      postalCode: '94043'
+    },
     description: 'Help remove invasive species and plant native trees in Riverside Park. A great way to contribute to local biodiversity.',
     organizer: 'Friends of Riverside Park',
     volunteers: ['vol1', 'vol3'],
@@ -77,6 +95,15 @@ export const mockEvents: Event[] = [
     date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
     time: '2:00 PM - 4:00 PM',
     location: 'GreenThumb Community Garden',
+    locationDetails: {
+      address: 'GreenThumb Community Garden',
+      coordinates: { latitude: 37.4275, longitude: -122.1697 },
+      placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+      city: 'Palo Alto',
+      state: 'California',
+      country: 'United States',
+      postalCode: '94301'
+    },
     description: 'Help us prepare the community garden for the new planting season. All ages welcome!',
     organizer: 'GreenThumb Gardeners',
     volunteers: ['vol2'],

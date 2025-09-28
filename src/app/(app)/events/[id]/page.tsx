@@ -2,27 +2,29 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Image from 'next/image';
 import {
   getEventById,
   updateEvent,
   addPointsToUser,
   joinEvent,
   leaveEvent,
+  getEventRegistrations,
   getUsersByIds,
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarDays, MapPin, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2, UserCheck } from 'lucide-react';
+import { CalendarDays, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { EventLocation } from '@/components/events/EventLocation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { Event, UserProfile } from '@/lib/types';
 import { getEventRegistrationConfirmationTemplate } from '@/lib/email-templates';
 import { sendEmailFromClient } from '@/lib/client-email';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getAuth } from 'firebase/auth';
 
 function VolunteerList({ volunteers }: { volunteers: UserProfile[] }) {
   if (volunteers.length === 0) {
@@ -60,6 +62,8 @@ export default function EventDetailPage() {
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
   const [registeredVolunteers, setRegisteredVolunteers] = useState<UserProfile[]>([]);
   const [checkedInVolunteers, setCheckedInVolunteers] = useState<UserProfile[]>([]);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
 
   const isEventCreator = userProfile?.uid === currentEvent?.organizerId;
   const isAdmin = userProfile?.role === 'admin';
@@ -72,19 +76,39 @@ export default function EventDetailPage() {
       setCurrentEvent(eventData);
 
       if (eventData) {
-        if (eventData.volunteers.length > 0) {
-          const volunteerProfiles = await getUsersByIds(eventData.volunteers);
-          setRegisteredVolunteers(volunteerProfiles);
+        const canViewVolunteers = (userProfile?.role === 'admin') || (userProfile?.uid === eventData.organizerId);
+        // For admins/organizers, fetch registrations from subcollection and resolve profiles
+        if (canViewVolunteers) {
+          try {
+            const regUids = await getEventRegistrations(eventId);
+            const regProfiles = await getUsersByIds(regUids);
+            setRegisteredVolunteers(regProfiles);
+          } catch (e) {
+            console.error('Failed to fetch registrations:', e);
+            setRegisteredVolunteers([]);
+          }
+        } else {
+          setRegisteredVolunteers([]);
         }
-        if (eventData.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
+
+        if (canViewVolunteers && eventData.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
           const checkedInIds = Object.keys(eventData.checkedInVolunteers);
           const checkedInProfiles = await getUsersByIds(checkedInIds);
           setCheckedInVolunteers(checkedInProfiles);
+        } else {
+          setCheckedInVolunteers([]);
         }
 
         if (userProfile) {
-          setIsRegistered(eventData.volunteers.includes(userProfile.uid));
-          setHasCheckedIn(!!eventData.checkedInVolunteers?.[userProfile.uid]);
+          const authUid = getAuth().currentUser?.uid || userProfile.uid;
+          const registeredByEventList = Array.isArray(eventData.volunteers)
+            ? eventData.volunteers.includes(authUid)
+            : false;
+          const registeredByProfile = Array.isArray(userProfile.eventsAttended)
+            ? userProfile.eventsAttended.includes(eventId)
+            : false;
+          setIsRegistered(!!(registeredByEventList || registeredByProfile));
+          setHasCheckedIn(!!eventData.checkedInVolunteers?.[authUid]);
         }
       }
     } catch (error) {
@@ -103,9 +127,16 @@ export default function EventDetailPage() {
 
   const handleLeave = async () => {
     if (!userProfile || !currentEvent) return;
+    if (isLeaving) return;
 
     try {
-      await leaveEvent(eventId, userProfile.uid);
+      setIsLeaving(true);
+      const authUid = getAuth().currentUser?.uid || userProfile.uid;
+      if (!authUid) {
+        toast({ title: 'Authentication Required', description: 'Please log in again to leave the event.', variant: 'destructive' });
+        return;
+      }
+      await leaveEvent(eventId, authUid);
       setIsRegistered(false);
       await fetchEventData(); // Refresh data to update volunteer list
       toast({
@@ -116,11 +147,17 @@ export default function EventDetailPage() {
     } catch (error) {
       console.error("Failed to leave event:", error);
       toast({ title: 'Error', description: 'Could not leave the event. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsLeaving(false);
     }
   };
 
   const handleCheckIn = async () => {
     if (!userProfile || !currentEvent) return;
+    if (!isAdmin) {
+      toast({ title: 'Check-in Restricted', description: 'Only admins can record check-ins.', variant: 'destructive' });
+      return;
+    }
     if (hasCheckedIn) {
       toast({ title: 'Already Checked In', description: 'You have already checked in for this event.' });
       return;
@@ -134,7 +171,7 @@ export default function EventDetailPage() {
 
     try {
       await updateEvent(eventId, { checkedInVolunteers: updatedCheckedInVolunteers });
-      await addPointsToUser(userProfile.uid, 50); // Award 50 points for checking in
+      await addPointsToUser(userProfile.uid, 50); // Admin-only: award points
       
       setHasCheckedIn(true);
       // Refresh data
@@ -156,9 +193,16 @@ export default function EventDetailPage() {
       if (!userProfile) router.push('/login');
       return;
     }
+    if (isRegistering) return;
     
     try {
-      await joinEvent(eventId, userProfile.uid);
+      setIsRegistering(true);
+      const authUid = getAuth().currentUser?.uid || userProfile.uid;
+      if (!authUid) {
+        toast({ title: 'Authentication Required', description: 'Please log in again to register for the event.', variant: 'destructive' });
+        return;
+      }
+      await joinEvent(eventId, authUid);
       
       setIsRegistered(true);
       // Refresh data
@@ -192,16 +236,12 @@ export default function EventDetailPage() {
     } catch (error) {
       console.error("Registration failed:", error);
       toast({ title: 'Registration Failed', description: 'Could not register you for the event. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsRegistering(false);
     }
   };
 
-  const handleGeoCheckIn = () => {
-    toast({
-      title: 'Geo Check-in',
-      description: 'This feature is not yet implemented.',
-      variant: 'default'
-    });
-  };
+
   
   const getStatusBadge = (status?: Event['status']) => {
     if (!status) return null;
@@ -246,35 +286,26 @@ export default function EventDetailPage() {
       </div>
 
       <Card className="overflow-hidden shadow-xl">
-        <CardHeader className="p-0 relative">
-          <Image
-            src={currentEvent.mapImageUrl || "https://placehold.co/1200x400.png"}
-            alt={`${currentEvent.name} location map`}
-            data-ai-hint="map location"
-            width={1200}
-            height={400}
-            className="w-full h-64 md:h-96 object-cover"
-            priority // Consider if priority is needed, can cause hydration issues if not handled well
-          />
-           <div className="absolute top-4 right-4">
-             {getStatusBadge(currentEvent.status)}
-           </div>
-        </CardHeader>
         <CardContent className="p-6 space-y-4">
-          <CardTitle className="text-3xl md:text-4xl font-headline text-primary">{currentEvent.name}</CardTitle>
+          <div className="flex justify-between items-start">
+            <CardTitle className="text-3xl md:text-4xl font-headline text-primary">{currentEvent.name}</CardTitle>
+            {getStatusBadge(currentEvent.status)}
+          </div>
           
           <div className="grid md:grid-cols-2 gap-4 text-md">
             <div className="flex items-center">
               <CalendarDays className="mr-3 h-5 w-5 text-primary" />
               <span>{eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {currentEvent.time}</span>
             </div>
-            <div className="flex items-center">
-              <MapPin className="mr-3 h-5 w-5 text-primary" />
-              <span>{currentEvent.location}</span>
-            </div>
+            <EventLocation 
+              location={currentEvent.location} 
+              locationDetails={currentEvent.locationDetails}
+              showDistance={true}
+              showDirections={true}
+            />
             <div className="flex items-center">
               <Users className="mr-3 h-5 w-5 text-primary" />
-              <span>{currentEvent.volunteers.length} registered</span>
+              <span>{(canManageEvent ? registeredVolunteers.length : currentEvent.volunteers.length)} registered</span>
             </div>
             {currentEvent.status === 'completed' && currentEvent.wasteCollectedKg && (
               <div className="flex items-center">
@@ -290,7 +321,7 @@ export default function EventDetailPage() {
 
           <div className="space-x-2 mt-4">
             {(currentEvent.status === 'upcoming' || currentEvent.status === 'ongoing') && !isRegistered && (
-              <Button size="lg" onClick={handleRegister} disabled={authLoading}>
+              <Button size="lg" onClick={handleRegister} disabled={authLoading || isRegistering}>
                 {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                 Register for this Event
               </Button>
@@ -306,9 +337,6 @@ export default function EventDetailPage() {
                 <CheckCircle className="mr-2 h-5 w-5 text-green-500" /> You are Checked In
               </Button>
             )}
-            <Button variant="outline" size="lg" onClick={handleGeoCheckIn}>
-              Geo Check-in (Sim)
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -342,8 +370,8 @@ export default function EventDetailPage() {
         )}
       </Card>
 
-      {/* Volunteer-specific Actions */}
-      {!canManageEvent && !isPastEvent && (
+      {/* Participation Actions (show for upcoming events to all; and for admins also on past events) */}
+      {(!isPastEvent || canManageEvent) && (
         <Card>
           <CardHeader>
             <CardTitle>Your Participation</CardTitle>
@@ -355,12 +383,12 @@ export default function EventDetailPage() {
                   <CheckCircle className="mr-2 h-5 w-5" />
                   You are registered for this event!
                 </div>
-                <Button onClick={handleLeave} variant="destructive">
+                <Button onClick={handleLeave} variant="destructive" disabled={isLeaving}>
                   Leave Event
                 </Button>
               </div>
             ) : (
-              <Button onClick={handleRegister}>
+              <Button onClick={handleRegister} disabled={isRegistering}>
                 Join Event
               </Button>
             )}
@@ -377,7 +405,7 @@ export default function EventDetailPage() {
           <CardContent>
             <div className="space-x-2 mt-4">
               {currentEvent.status === 'upcoming' && !isRegistered && (
-                <Button size="lg" onClick={handleRegister} disabled={authLoading}>
+                <Button size="lg" onClick={handleRegister} disabled={authLoading || isRegistering}>
                   {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                   Register for this Event
                 </Button>
@@ -393,9 +421,11 @@ export default function EventDetailPage() {
                   <CheckCircle className="mr-2 h-5 w-5 text-green-500" /> You are Checked In
                 </Button>
               )}
-              <Button variant="outline" size="lg" onClick={handleGeoCheckIn}>
-                Geo Check-in (Sim)
-              </Button>
+              {isRegistered && (
+                <Button size="lg" variant="destructive" onClick={handleLeave} disabled={isLeaving}>
+                  Leave Event
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

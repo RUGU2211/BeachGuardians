@@ -24,7 +24,20 @@ const GenerateCertificateTextOutputSchema = z.object({
 export type GenerateCertificateTextOutput = z.infer<typeof GenerateCertificateTextOutputSchema>;
 
 export async function generateCertificateText(input: GenerateCertificateTextInput): Promise<GenerateCertificateTextOutput> {
-  return generateCertificateTextFlow(input);
+  const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  if (hasGemini) {
+    try {
+      return await generateCertificateTextFlow(input);
+    } catch (e) {
+      console.warn('Genkit certificate generation failed; using fallback.', e);
+    }
+  }
+
+  const certificateText = `This certificate is proudly presented to ${input.volunteerName} in recognition of their dedicated participation in the ${input.eventName} held on ${input.eventDate}. Your commitment to protecting our environment is highly valued. Thank you for making a difference!
+
+[Signature of Organizer] — BeachGuardians`;
+
+  return { certificateText };
 }
 
 const prompt = ai.definePrompt({

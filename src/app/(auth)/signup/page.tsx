@@ -11,10 +11,10 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { auth, createUserProfile, checkIfUserExists, db } from '@/lib/firebase';
+import { auth, createUserProfile, checkIfUserExists, db, verifyVolunteerUser } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Mail, Lock, Eye, EyeOff, Shield, Building2, Phone, Globe, FileText } from 'lucide-react';
+import { Loader2, User, Mail, Lock, Eye, EyeOff, Shield, Building2, Phone, Globe, FileText, CheckCircle } from 'lucide-react';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -68,6 +68,11 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showOtpVerification, setShowOtpVerification] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<SignupFormValues | null>(null);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupFormSchema),
@@ -89,6 +94,96 @@ export default function SignupPage() {
 
   const selectedRole = form.watch('role');
 
+  const handleSendVolunteerOtp = async (data: SignupFormValues) => {
+    setIsSendingOtp(true);
+    try {
+      const response = await fetch('/api/auth/send-volunteer-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+          name: data.name,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send OTP');
+      }
+
+      setPendingFormData(data);
+      setShowOtpVerification(true);
+      toast({
+        title: 'Verification Code Sent',
+        description: `We've sent a verification code to ${data.email}. Please check your email.`,
+      });
+    } catch (error: any) {
+      console.error('Error sending OTP:', error);
+      toast({
+        title: 'Failed to Send Verification Code',
+        description: error.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode || !pendingFormData) return;
+
+    setIsVerifyingOtp(true);
+    try {
+      const response = await fetch('/api/auth/verify-volunteer-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: pendingFormData.email,
+          otp: otpCode,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to verify OTP');
+      }
+
+      // OTP verified, proceed with account creation
+      await handleEmailSignup(pendingFormData);
+      
+      // After successful account creation, verify the volunteer user
+      if (pendingFormData.role === 'volunteer') {
+        const user = auth.currentUser;
+        if (user) {
+          await verifyVolunteerUser(user.uid);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error verifying OTP:', error);
+      toast({
+        title: 'Verification Failed',
+        description: error.message || 'Please check your code and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  const handleFormSubmit = async (data: SignupFormValues) => {
+    // For volunteers, send OTP first
+    if (data.role === 'volunteer') {
+      await handleSendVolunteerOtp(data);
+    } else {
+      // For admins, proceed directly to account creation
+      await handleEmailSignup(data);
+    }
+  };
+
   const handleEmailSignup = async (data: SignupFormValues) => {
     setIsLoading(true);
     try {
@@ -106,6 +201,9 @@ export default function SignupPage() {
         email: data.email,
         fullName: data.name,
         role: data.role,
+        // Both volunteers and admins start unverified
+        // Volunteers get verified after OTP, admins after admin verification
+        isVerified: false,
         ...(data.role === 'admin' && {
           ngoName: data.ngoName,
           ngoType: data.ngoType,
@@ -166,9 +264,86 @@ export default function SignupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* OTP Verification Step */}
+          {showOtpVerification && (
+            <div className="space-y-6">
+              <div className="text-center space-y-2">
+                <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                  <Mail className="w-8 h-8 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">Verify Your Email</h3>
+                <p className="text-gray-600">
+                  We've sent a 6-digit verification code to{' '}
+                  <span className="font-medium text-gray-900">{pendingFormData?.email}</span>
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="otp" className="text-sm font-medium text-gray-700">
+                    Verification Code
+                  </Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    placeholder="Enter 6-digit code"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="text-center text-lg font-mono tracking-widest h-12 border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    maxLength={6}
+                  />
+                </div>
+
+                <div className="flex flex-col space-y-3">
+                  <Button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={isVerifyingOtp || otpCode.length !== 6}
+                    className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
+                  >
+                    {isVerifyingOtp ? (
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                      <CheckCircle className="mr-2 h-5 w-5" />
+                    )}
+                    Verify Email
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowOtpVerification(false);
+                      setOtpCode('');
+                      setPendingFormData(null);
+                    }}
+                    className="w-full h-12 text-base"
+                  >
+                    Back to Registration
+                  </Button>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">
+                    Didn't receive the code?{' '}
+                    <button
+                      type="button"
+                      onClick={() => pendingFormData && handleSendVolunteerOtp(pendingFormData)}
+                      disabled={isSendingOtp}
+                      className="font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+                    >
+                      {isSendingOtp ? 'Sending...' : 'Resend'}
+                    </button>
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Email/Password Form */}
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleEmailSignup)} className="space-y-5">
+          {!showOtpVerification && (
+            <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-5">
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
@@ -499,22 +674,23 @@ export default function SignupPage() {
               <Button 
                 type="submit" 
                 className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]" 
-                disabled={isLoading}
+                disabled={isLoading || isSendingOtp}
               >
-                {isLoading ? (
+                {(isLoading || isSendingOtp) ? (
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 ) : (
                   <User className="mr-2 h-5 w-5" />
                 )}
-                Create Account
+                {selectedRole === 'volunteer' ? 'Send Verification Code' : 'Create Account'}
               </Button>
             </form>
           </Form>
+          )}
         </CardContent>
         <CardFooter className="flex flex-col space-y-4 pt-6">
           <div className="text-sm text-gray-600 text-center">
             Already have an account?{' '}
-            <Link href="/login" className="font-semibold text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline transition-colors">
+            <Link href="/login" prefetch={false} className="font-semibold text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline transition-colors">
               Sign in here
             </Link>
           </div>

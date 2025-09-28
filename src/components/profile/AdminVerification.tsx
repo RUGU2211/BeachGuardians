@@ -8,13 +8,14 @@ import { Loader2, Send } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import type { UserProfile } from '@/lib/types';
+import { verifyAdminUser } from '@/lib/firebase';
 
 interface AdminVerificationProps {
     userProfile: UserProfile;
 }
 
 export function AdminVerification({ userProfile }: AdminVerificationProps) {
-  const { user } = useAuth();
+  const { user, refreshUserProfile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -89,10 +90,22 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
         description: 'Your admin account has been verified. Redirecting...',
       });
 
-      // Give Firestore a brief moment to mirror the flag, then navigate
+      // Firestore mirror may be skipped in dev; ensure Firestore reflects admin verification
+      try {
+        if (userProfile?.role === 'admin' && user?.uid) {
+          await verifyAdminUser(user.uid);
+        }
+      } catch (e) {
+        console.warn('Failed to mirror admin verification to Firestore, will rely on refresh:', e);
+      }
+
+      // Refresh user profile to reflect verification status
+      await refreshUserProfile();
+
+      // Give a brief moment for the UI to update, then navigate
       setTimeout(() => {
         router.push('/dashboard');
-      }, 600);
+      }, 1000);
 
     } catch (error: any) {
       toast({
@@ -158,4 +171,4 @@ export function AdminVerification({ userProfile }: AdminVerificationProps) {
       </div>
     </div>
   );
-} 
+}

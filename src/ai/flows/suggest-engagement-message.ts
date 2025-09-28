@@ -13,14 +13,14 @@ import {z} from 'genkit';
 
 const SuggestEngagementMessageInputSchema = z.object({
   volunteerName: z.string().describe('The name of the volunteer.'),
-  pastContributions: z.string().describe('A summary of the volunteer\'s past contributions, including events attended and waste collected.'),
-  upcomingEvents: z.string().describe('A description of upcoming events that the volunteer might be interested in.'),
-  preferredTone: z.string().optional().describe('The preferred tone of the message (e.g., friendly, formal, enthusiastic).'),
+  lastParticipationDate: z.string().describe('Last participation date in YYYY-MM-DD format.'),
+  totalEventsAttended: z.number().describe('Total number of events the volunteer has attended.'),
+  preferredCommunicationStyle: z.enum(['friendly', 'professional', 'casual', 'motivational']).describe('Preferred communication style.'),
 });
 export type SuggestEngagementMessageInput = z.infer<typeof SuggestEngagementMessageInputSchema>;
 
 const SuggestEngagementMessageOutputSchema = z.object({
-  engagementMessage: z.string().describe('A personalized engagement message for the volunteer.'),
+  message: z.string().describe('A personalized engagement message for the volunteer.'),
 });
 export type SuggestEngagementMessageOutput = z.infer<typeof SuggestEngagementMessageOutputSchema>;
 
@@ -28,14 +28,18 @@ const prompt = ai.definePrompt({
   name: 'suggestEngagementMessagePrompt',
   input: {schema: SuggestEngagementMessageInputSchema},
   output: {schema: SuggestEngagementMessageOutputSchema},
-  prompt: `You are an AI assistant designed to create personalized engagement messages for volunteers.
+  prompt: `You are an AI assistant that writes concise, supportive engagement messages to re-engage volunteers.
 
-  Based on the volunteer's past contributions, upcoming events, and preferred tone, generate a message that encourages continued participation.
+  Use the volunteer's name, last participation date, total events attended, and preferred communication style to craft a short message (4–6 sentences) that:
+  - Appreciates their contributions
+  - References the last participation date naturally
+  - Encourages them to join upcoming efforts
+  - Matches the preferred communication style
 
   Volunteer Name: {{{volunteerName}}}
-  Past Contributions: {{{pastContributions}}}
-  Upcoming Events: {{{upcomingEvents}}}
-  Preferred Tone: {{{preferredTone}}}
+  Last Participation Date: {{{lastParticipationDate}}}
+  Total Events Attended: {{{totalEventsAttended}}}
+  Preferred Communication Style: {{{preferredCommunicationStyle}}}
 
   Engagement Message:`,
 });
@@ -51,3 +55,33 @@ export const suggestEngagementMessageFlow = ai.defineFlow(
     return output!;
   }
 );
+
+export async function suggestEngagementMessage(
+  input: SuggestEngagementMessageInput
+): Promise<SuggestEngagementMessageOutput> {
+  const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+
+  if (hasGemini) {
+    try {
+      return await suggestEngagementMessageFlow(input);
+    } catch (e) {
+      console.warn('Genkit engagement message failed; using fallback.', e);
+    }
+  }
+
+  const style = input.preferredCommunicationStyle;
+  const stylePhrase = style ? `in a ${style} style` : 'in a friendly style';
+  const attended = input.totalEventsAttended ?? 0;
+  const lastDate = input.lastParticipationDate;
+  const joinedTimes = attended === 1 ? '1 event' : `${attended} events`;
+  const message = `Hi ${input.volunteerName},
+
+Thank you for your contributions — you’ve joined ${joinedTimes}. Your last cleanup was on ${lastDate}.
+We’d love to have you back for our upcoming efforts along the coast.
+Your energy makes a real difference for our beaches and community.
+If you’re up for it, we’ll share the next event details soon ${stylePhrase}.
+
+— BeachGuardians`;
+
+  return { message };
+}

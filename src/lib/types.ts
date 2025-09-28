@@ -10,6 +10,7 @@ export interface UserProfile {
   fullName: string;
   role: UserRole;
   isVerified: boolean;
+  isAdminVerified?: boolean; // For admin users only
   points: number;
   avatarUrl: string;
   createdAt: string; // ISO string
@@ -40,14 +41,24 @@ export interface UserProfile {
   ngoDescription?: string;
 }
 
+// Event categories for filtering
+export type EventCategory = 'beach_cleanup' | 'river_cleanup' | 'park_cleanup' | 'street_cleanup' | 'awareness_campaign' | 'tree_planting' | 'recycling_drive' | 'educational_workshop';
+
 // Represents a single cleanup event.
 export interface Event {
   id: string;
   name:string;
-  date: string; // ISO string
-  time: string; // e.g., "10:00 AM - 2:00 PM"
+  startDate: string; // ISO string - event start date and time
+  endDate: string; // ISO string - event end date and time
+  date: string; // ISO string - kept for backward compatibility
+  time: string; // e.g., "10:00 AM - 2:00 PM" - kept for backward compatibility
   location: string;
+  // Flat fields for easier querying and interoperability
+  event_location?: string; // Full formatted address (duplicate of locationDetails.address)
+  latitude?: number;
+  longitude?: number;
   description: string;
+  category: EventCategory; // Event category for filtering
   organizerId: string; // User UID of the admin/organizer
   organizerName: string;
   volunteers: string[]; // Array of user UIDs
@@ -55,6 +66,20 @@ export interface Event {
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   wasteCollectedKg?: number;
   checkedInVolunteers?: Record<string, { checkInTime: string }>; // Maps UID to check-in time
+  
+  // Enhanced location fields
+  locationDetails?: {
+    address: string; // Full formatted address
+    coordinates: {
+      latitude: number;
+      longitude: number;
+    };
+    placeId?: string; // Google Places ID for enhanced functionality
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+  };
 }
 
 // Represents an entry in the community leaderboard.
@@ -67,12 +92,25 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+// Represents an entry in the NGO leaderboard.
+export interface NgoLeaderboardEntry {
+  ngoId: string; // Admin user UID
+  ngoName: string;
+  organizerName?: string;
+  avatarUrl?: string;
+  totalWasteKg: number;
+  eventsCount: number;
+  rankByWaste: number;
+  rankByEvents: number;
+}
+
 // Represents a log of collected waste.
 export interface WasteLog {
   id: string;
   type: string;
   weightKg: number;
   loggedBy: string; // User UID
+  userId?: string; // Duplicate of loggedBy for rules-compliant queries
   eventId: string;
   date: string; // ISO string
 }
@@ -93,6 +131,24 @@ export interface GeneratedSocialMediaPost {
   platform: SocialMediaPlatform;
   content: string;
   imageUrl?: string;
+}
+
+// Event filtering types
+export interface EventFilters {
+  category?: EventCategory | 'all';
+  status?: Event['status'] | 'all';
+  dateRange?: {
+    start: string; // ISO string
+    end: string; // ISO string
+  };
+  location?: string; // City, state, or search term
+  organizer?: string; // NGO name or organizer name
+  searchQuery?: string; // General search across name, description
+}
+
+export interface EventSortOptions {
+  field: 'startDate' | 'endDate' | 'name' | 'location' | 'organizerName';
+  direction: 'asc' | 'desc';
 }
 
 // This interface is redundant with UserProfile and can be removed

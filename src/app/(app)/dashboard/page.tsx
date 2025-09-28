@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ImpactChart } from '@/components/dashboard/ImpactChart';
-import { Users, Trash2, CalendarCheck2, Award, History, ListChecks, Loader2, ShieldCheck, AlertTriangle, Sparkles, MessageSquareHeart, Calendar, Trophy, Plus, Shield, User, Clock, MapPin, TrendingUp, Activity, Settings } from 'lucide-react';
+import { Users, Trash2, CalendarCheck2, Award, History, ListChecks, Loader2, ShieldCheck, AlertTriangle, Sparkles, MessageSquareHeart, Calendar, Trophy, Plus, Shield, User, Clock, MapPin, TrendingUp, Activity, Settings, ClipboardList } from 'lucide-react';
 import type { ChartConfig } from '@/components/ui/chart';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,14 +13,15 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { generateHeatmapImage } from '@/ai/flows/generate-heatmap-image-flow';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { WasteCompositionChart } from '@/components/dashboard/WasteCompositionChart';
 import { TopEventsChart } from '@/components/dashboard/TopEventsChart';
 import { LeaderboardWidget } from '@/components/gamification/LeaderboardWidget';
-import { collection, query, getDocs, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { NgoLeaderboardWidget } from '@/components/gamification/NgoLeaderboardWidget';
+import EventMapPreview from '@/components/landing/EventMapPreview';
+import { collection, query, where, onSnapshot, orderBy, doc, collectionGroup, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Event, WasteLog, UserProfile } from '@/lib/types';
 
@@ -32,8 +33,6 @@ const chartConfig = {
 export default function DashboardPage() {
   const { toast } = useToast();
   const { user, userProfile, loading } = useAuth();
-  const [heatmapImageUrl, setHeatmapImageUrl] = useState("https://placehold.co/800x400.png");
-  const [isHeatmapLoading, setIsHeatmapLoading] = useState(true);
   
   // Real-time state
   const [events, setEvents] = useState<Event[]>([]);
@@ -50,11 +49,16 @@ export default function DashboardPage() {
     userBadges: 0,
   });
   const [monthlyChartData, setMonthlyChartData] = useState<any[]>([]);
+  const [userImpactChartData, setUserImpactChartData] = useState<any[]>([]);
   const [wasteCompositionData, setWasteCompositionData] = useState<any[]>([]);
   const [topEventsData, setTopEventsData] = useState<any[]>([]);
   const [recentWasteLogs, setRecentWasteLogs] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+  const [liveUserPoints, setLiveUserPoints] = useState<number>(userProfile?.points || 0);
+  const [liveUserBadges, setLiveUserBadges] = useState<number>(userProfile?.badges?.length || 0);
+  const [liveUserEventsAttended, setLiveUserEventsAttended] = useState<number>(0);
+  const [liveUserWasteKg, setLiveUserWasteKg] = useState<number>(0);
 
   // Real-time data listeners
   useEffect(() => {
@@ -64,26 +68,36 @@ export default function DashboardPage() {
     }
 
     const unsubscribeFunctions: (() => void)[] = [];
+    // Only treat user as admin when verified; avoids admin-only queries for unverified admins
+    const isAdmin = ((userProfile?.role || '').toLowerCase() === 'admin') && (userProfile?.isAdminVerified === true);
 
-    // Listen to events
-    const eventsQuery = query(collection(db, 'events'), orderBy('date', 'desc'));
-    const eventsUnsubscribe = onSnapshot(eventsQuery, (querySnapshot) => {
-      const eventsData: Event[] = [];
-      querySnapshot.forEach((doc) => {
-        const eventData = doc.data() as Event;
-        eventsData.push({
-          ...eventData,
-          id: doc.id,
+    // Listen to all events globally (real-time for everyone)
+    const eventsQueryGlobal = query(collection(db, 'events'), orderBy('startDate', 'asc'));
+    const unsubEventsGlobal = onSnapshot(
+      eventsQueryGlobal,
+      (querySnapshot) => {
+        const eventsData: Event[] = [];
+        querySnapshot.forEach((docSnap) => {
+          const eventData = docSnap.data() as Event;
+          eventsData.push({ ...eventData, id: docSnap.id });
         });
-      });
-      setEvents(eventsData);
-    });
-    unsubscribeFunctions.push(eventsUnsubscribe);
+        setEvents(eventsData);
+      },
+      (error) => {
+        console.error('Events listener (global) error:', error);
+        setEvents([]);
+      },
+    );
+    unsubscribeFunctions.push(unsubEventsGlobal);
 
     // Listen to waste logs
-    const wasteLogsQuery = query(collection(db, 'wasteLogs'), orderBy('date', 'desc'));
+    const wasteLogsRef = collection(db, 'wasteLogs');
+    // For non-admins, drop orderBy to avoid composite index requirements; sort client-side
+    const wasteLogsQuery = isAdmin
+      ? query(wasteLogsRef, orderBy('date', 'desc'))
+      : query(wasteLogsRef, where('userId', '==', user.uid));
     const wasteLogsUnsubscribe = onSnapshot(wasteLogsQuery, (querySnapshot) => {
-      const wasteLogsData: WasteLog[] = [];
+      let wasteLogsData: WasteLog[] = [];
       querySnapshot.forEach((doc) => {
         const logData = doc.data() as WasteLog;
         wasteLogsData.push({
@@ -91,50 +105,146 @@ export default function DashboardPage() {
           id: doc.id,
         });
       });
+      // Sort client-side by date desc for non-admin query
+      wasteLogsData = wasteLogsData.sort((a, b) => {
+        const da = new Date(a.date).getTime();
+        const db = new Date(b.date).getTime();
+        return db - da;
+      });
       setWasteLogs(wasteLogsData);
+    }, (error) => {
+      console.error('Error listening to waste logs:', error);
+      setWasteLogs([]);
     });
     unsubscribeFunctions.push(wasteLogsUnsubscribe);
 
-    // Listen to users (for volunteer count)
-    const usersQuery = query(collection(db, 'users'), where('role', '==', 'volunteer'));
-    const usersUnsubscribe = onSnapshot(usersQuery, (querySnapshot) => {
-      const usersData: UserProfile[] = [];
-      querySnapshot.forEach((doc) => {
-        const userData = doc.data() as UserProfile;
-        usersData.push({
-          ...userData,
-          uid: doc.id,
+    // Listen to users (for volunteer count) - only for admins
+    if (isAdmin) {
+      const usersQuery = query(collection(db, 'users'), where('role', '==', 'volunteer'));
+      const usersUnsubscribe = onSnapshot(usersQuery, (querySnapshot) => {
+        const usersData: UserProfile[] = [];
+        querySnapshot.forEach((doc) => {
+          const userData = doc.data() as UserProfile;
+          usersData.push({
+            ...userData,
+            uid: doc.id,
+          });
         });
+        setUsers(usersData);
+      }, (error) => {
+        // Silence permission-denied errors to avoid noisy console logs in non-admin contexts
+        const code = (error as any)?.code || (error as any)?.name;
+        if (code !== 'permission-denied') {
+          console.error('Error listening to users:', error);
+        }
+        setUsers([]);
       });
-      setUsers(usersData);
-    });
-    unsubscribeFunctions.push(usersUnsubscribe);
+      unsubscribeFunctions.push(usersUnsubscribe);
+    } else {
+      setUsers([]);
+    }
 
     return () => {
       unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
     };
+  }, [user?.uid, userProfile?.role, userProfile?.isAdminVerified]);
+
+  // Live user points and badges from user doc
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      const data = snap.data() as any;
+      const points = data?.points ?? 0;
+      const badgesCount = Array.isArray(data?.badges) ? data.badges.length : (data?.badgesCount ?? 0);
+      const eventsCount = Array.isArray(data?.eventsAttended)
+        ? data.eventsAttended.length
+        : Number(data?.eventsAttendedCount ?? 0) || 0;
+      setLiveUserPoints(points);
+      setLiveUserBadges(badgesCount);
+      setLiveUserEventsAttended(eventsCount);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  // Removed collectionGroup listener for registrations to avoid permissions errors.
+  // We now derive attended events count from the user document (eventsAttended array).
+
+  // Personal waste logs realtime counter (safe for all roles)
+  useEffect(() => {
+    if (!user?.uid) return;
+    // Avoid composite index: only filter by userId, sort/aggregate client-side
+    const personalQuery = query(
+      collection(db, 'wasteLogs'),
+      where('userId', '==', user.uid)
+    );
+    const unsub = onSnapshot(personalQuery, (querySnapshot) => {
+      let total = 0;
+      querySnapshot.forEach((doc) => {
+        const log = doc.data() as WasteLog;
+        total += Number(log?.weightKg || 0);
+      });
+      setLiveUserWasteKg(total);
+    }, (error) => {
+      console.error('Personal waste logs listener error:', error);
+      setLiveUserWasteKg(0);
+    });
+    return () => unsub();
   }, [user?.uid]);
 
   // Calculate dashboard stats and chart data when data changes
   useEffect(() => {
     if (events.length > 0 || wasteLogs.length > 0 || users.length > 0) {
-      // Calculate total stats
-      const totalWaste = wasteLogs.reduce((sum, log) => sum + log.weightKg, 0);
-      const totalVolunteers = users.length;
+      // Calculate total stats (global totals from public events, realtime)
+      const totalWaste = events.reduce((sum, evt) => sum + Number(evt.wasteCollectedKg || 0), 0);
+      const isAdminRole = (userProfile?.role || '').toLowerCase() === 'admin';
+      const volunteerSet = new Set<string>();
+      events.forEach((evt) => (evt.volunteers || []).forEach((uid) => volunteerSet.add(uid)));
+      const totalVolunteers = isAdminRole ? users.length || volunteerSet.size : volunteerSet.size;
       const totalEventsCount = events.length;
       const upcomingEventsCount = events.filter(event => 
         event.status === 'upcoming' || event.status === 'ongoing'
       ).length;
+
+      // Calculate user-specific stats
+      // Fallback calculation from event doc volunteers (in case regs query fails)
+      const userEventsAttendedFallback = events.filter(event => 
+        event.volunteers && event.volunteers.includes(user?.uid || '')
+      ).length;
+      
+      // Compute user waste collected:
+      // - Volunteers: sum of their own logs
+      // - Admins: own logs + all logs from events they organize (without double-counting)
+      const eventsById = new Map<string, Event>();
+      events.forEach(evt => eventsById.set(evt.id, evt));
+      const adminUid = user?.uid || '';
+      const isAdminUser = isAdminRole && (userProfile?.isAdminVerified === true);
+      let ownLogsTotal = 0;
+      let ownedEventsLogsTotal = 0;
+      wasteLogs.forEach((log) => {
+        const weight = Number(log.weightKg || 0);
+        if (log.loggedBy === adminUid) {
+          ownLogsTotal += weight;
+        }
+        const evt = eventsById.get(log.eventId);
+        if (evt && evt.organizerId === adminUid) {
+          ownedEventsLogsTotal += weight;
+        }
+      });
+      // Avoid double-counting when admin logs at their own events
+      const userWasteCollected = isAdminUser ? (ownedEventsLogsTotal) : ownLogsTotal;
+      
+      const userPoints = userProfile?.points || 0;
+      const userBadges = userProfile?.badges?.length || 0;
 
       setDashboardStats({
         totalWasteCollected: totalWaste,
         totalVolunteers,
         totalEvents: totalEventsCount,
         upcomingEvents: upcomingEventsCount,
-        userEventsAttended: totalEventsCount,
-        userWasteCollected: totalWaste,
-        userPoints: 0, // Assuming userPoints is not available in the provided data
-        userBadges: 0, // Assuming userBadges is not available in the provided data
+        userEventsAttended: liveUserEventsAttended || userEventsAttendedFallback,
+        userWasteCollected: (liveUserWasteKg || userWasteCollected),
+        userPoints,
+        userBadges,
       });
 
       // Generate monthly chart data
@@ -177,6 +287,43 @@ export default function DashboardPage() {
       }).reverse();
 
       setMonthlyChartData(chartData);
+
+      // Generate user-specific impact chart data
+      const userChartData = Array.from({ length: A_FEW_MONTHS }).map((_, i) => {
+        const targetMonthDate = subMonths(today, i);
+        const monthAbbreviation = format(targetMonthDate, 'MMM');
+        const year = targetMonthDate.getFullYear();
+        const start = startOfMonth(targetMonthDate);
+        const end = endOfMonth(targetMonthDate);
+
+        let userWasteThisMonth = 0;
+        const adminUidForChart = user?.uid || '';
+        const isAdminUserForChart = ((userProfile?.role || '').toLowerCase() === 'admin') && (userProfile?.isAdminVerified === true);
+        // Volunteers: only their own logs. Admins: include logs from events they organize.
+        wasteLogs.forEach(log => {
+          const logDate = parseISO(log.date);
+          if (!isWithinInterval(logDate, { start, end })) return;
+          if (isAdminUserForChart) {
+            const evt = events.find(e => e.id === log.eventId);
+            if (evt && evt.organizerId === adminUidForChart) {
+              userWasteThisMonth += log.weightKg;
+            }
+          } else {
+            if (log.loggedBy === adminUidForChart) {
+              userWasteThisMonth += log.weightKg;
+            }
+          }
+        });
+
+        return {
+          name: monthAbbreviation,
+          fullName: `${format(targetMonthDate, 'MMMM')} ${year}`,
+          wasteCollected: parseFloat(userWasteThisMonth.toFixed(1)),
+          volunteers: 1, // Always 1 for user-specific chart
+        };
+      }).reverse();
+
+      setUserImpactChartData(userChartData);
 
       // Process waste composition data
       const wasteByType = wasteLogs.reduce((acc, log) => {
@@ -228,31 +375,9 @@ export default function DashboardPage() {
 
       setLoadingData(false);
     }
-  }, [events, wasteLogs, users]);
+  }, [events, wasteLogs, users, user?.uid, userProfile]);
 
-  const fetchHeatmapImage = React.useCallback(async () => {
-    setIsHeatmapLoading(true);
-    try {
-      const result = await generateHeatmapImage({
-        prompt: "A vibrant, abstract heatmap of coastal cleanup volunteer activity. Show hotspots in fiery reds and oranges, with cooler blues and greens representing areas of lower, but still present, engagement. The style should be modern and slightly conceptual."
-      });
-      setHeatmapImageUrl(result.imageDataUri);
-    } catch (error) {
-      console.error("Failed to generate heatmap image:", error);
-      toast({
-        title: "Heatmap Generation Failed",
-        description: "Could not generate AI heatmap. Using a default placeholder.",
-        variant: "destructive",
-      });
-      setHeatmapImageUrl("https://placehold.co/800x400.png?text=Heatmap+Error");
-    } finally {
-      setIsHeatmapLoading(false);
-    }
-  }, [toast]);
 
-  useEffect(() => {
-    fetchHeatmapImage();
-  }, [fetchHeatmapImage]);
 
   if (loading) {
     return (
@@ -281,7 +406,7 @@ export default function DashboardPage() {
   }
 
   const isAdmin = userProfile.role === 'admin';
-  const isVerified = userProfile.isVerified;
+  const isVerified = isAdmin ? userProfile.isAdminVerified : userProfile.isVerified;
 
   const getInitials = (name: string) => {
     return name
@@ -310,7 +435,7 @@ export default function DashboardPage() {
             </AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-3xl font-bold">Welcome back, {userProfile.fullName}!</h1>
+            <h1 className="text-3xl font-bold">Welcome, {userProfile.fullName}!</h1>
             <div className="flex items-center space-x-2 mt-1">
               <Badge variant={isAdmin ? (isVerified ? "default" : "secondary") : "outline"}>
                 {isAdmin ? (
@@ -336,7 +461,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Overview */}
+      {/* Stats Overview (User-specific) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Events Attended"
@@ -347,24 +472,24 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Waste Collected"
-          value={dashboardStats.userWasteCollected.toFixed(2) + " kg"}
+          value={(dashboardStats.userWasteCollected || 0).toFixed(2) + " kg"}
           icon={Trash2}
           description="Your waste collected"
-          trend={`${dashboardStats.userWasteCollected > 0 ? '+' : ''}${dashboardStats.userWasteCollected.toFixed(1)}kg total`}
+          trend={`${(dashboardStats.userWasteCollected || 0) > 0 ? '+' : ''}${(dashboardStats.userWasteCollected || 0).toFixed(1)}kg total`}
         />
         <StatCard
           title="Points Earned"
-          value={dashboardStats.userPoints.toString()}
+          value={liveUserPoints.toString()}
           icon={Award}
           description="Your total points earned"
-          trend={`${dashboardStats.userPoints > 0 ? '+' : ''}${dashboardStats.userPoints} points`}
+          trend={`${liveUserPoints > 0 ? '+' : ''}${liveUserPoints} points`}
         />
         <StatCard
           title="Badges Unlocked"
-          value={dashboardStats.userBadges.toString()}
+          value={liveUserBadges.toString()}
           icon={Trophy}
           description="Badges you've earned"
-          trend={`${dashboardStats.userBadges > 0 ? '+' : ''}${dashboardStats.userBadges} badges`}
+          trend={`${liveUserBadges > 0 ? '+' : ''}${liveUserBadges} badges`}
         />
       </div>
 
@@ -372,60 +497,22 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column (Visualizations) */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Activity Heatmap */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="space-y-1.5">
-                <CardTitle className="flex items-center space-x-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <span>Activity Hotspots (AI Generated)</span>
-                </CardTitle>
-                <CardDescription>
-                  A conceptual visualization of volunteer engagement density.
-                </CardDescription>
-              </div>
-              <Button variant="outline" size="sm" onClick={fetchHeatmapImage} disabled={isHeatmapLoading}>
-                {isHeatmapLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
-                )}
-                Regenerate
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {isHeatmapLoading ? (
-                <div className="flex items-center justify-center h-64 bg-muted/50 rounded-lg animate-pulse">
-                  <Loader2 className="h-8 w-8 text-primary/80 animate-spin" />
-                </div>
-              ) : (
-                <Image
-                  src={heatmapImageUrl}
-                  alt="AI-generated heatmap of volunteer activity"
-                  width={1200}
-                  height={400}
-                  className="rounded-lg object-cover w-full border"
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Impact Chart */}
+          {/* Community Impact Chart */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <TrendingUp className="h-5 w-5" />
-                <span>Your Impact Over Time</span>
+                <span>Community Impact Over Time</span>
               </CardTitle>
               <CardDescription>
-                Track your waste collection progress and environmental impact
+                Overall waste collection and volunteer activity across the community
               </CardDescription>
             </CardHeader>
             <CardContent>
               <ImpactChart
                 data={monthlyChartData}
-                title="Monthly Impact Overview"
-                description="Your waste collection and volunteer participation over time"
+                title="Monthly Community Impact"
+                description="Waste collection and volunteer participation over time"
                 config={chartConfig}
                 dataKeys={[
                   { name: 'wasteCollected', colorVar: 'hsl(var(--chart-1))' },
@@ -434,16 +521,48 @@ export default function DashboardPage() {
               />
             </CardContent>
           </Card>
+
+          {/* Composition & Top Events */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle>Waste Composition</CardTitle>
+                <CardDescription>Breakdown of collected waste types.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <WasteCompositionChart data={wasteCompositionData} />
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle>Top Performing Events</CardTitle>
+                <CardDescription>Most waste collected (Top 5).</CardDescription>
+              </CardHeader>
+              <CardContent className="pr-0">
+                <TopEventsChart data={topEventsData} />
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Right Column (Actions & Info) */}
-        <div className="lg:col-span-1 space-y-8">
+        <div className="lg:col-span-1 space-y-6">
+          {/* Event Map Preview */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle className="font-headline">Event Map Preview</CardTitle>
+              <CardDescription>Live event locations based on your access</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EventMapPreview events={upcomingEvents as any} compact height={280} />
+            </CardContent>
+          </Card>
           {/* Quick Actions */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+              <CardTitle className="font-headline">Quick Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               <Button asChild className="w-full justify-start">
                 <Link href="/events">
                   <Calendar className="mr-2 h-4 w-4" />
@@ -465,68 +584,62 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Admin Quick Actions */}
-          {isAdmin && isVerified && (
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Shield className="h-5 w-5" />
-                  <span>Admin Tools</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <Link href="/admin/ai-content">
-                    <Activity className="mr-2 h-4 w-4" />
-                    AI Content Generator
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <Link href="/admin/engagement-tool">
-                    <Users className="mr-2 h-4 w-4" />
-                    Engagement Tool
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <Link href="/admin/user-management">
-                    <Shield className="mr-2 h-4 w-4" />
-                    User Management
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <Link href="/admin/settings">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Admin Settings
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          {/* Admin Tools removed as requested */}
 
           {/* Upcoming Events */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle>Upcoming Events</CardTitle>
+              <CardTitle className="font-headline">Upcoming Events</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {upcomingEvents.length > 0 ? (
-                upcomingEvents.map((event) => (
-                  <div key={event.id} className="flex items-center space-x-3 p-3 border rounded-lg">
-                    <div className="flex-shrink-0">
-                      <Calendar className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{event.name}</p>
-                      <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        <span>{event.location}</span>
+                upcomingEvents.map((event) => {
+                  const formattedDate = (() => {
+                    try {
+                      if (event.startDate && event.endDate) {
+                        const start = parseISO(event.startDate);
+                        const end = parseISO(event.endDate);
+                        const sameDay = format(start, 'yyyy-MM-dd') === format(end, 'yyyy-MM-dd');
+                        const datePart = sameDay
+                          ? format(start, 'MMM d, yyyy')
+                          : `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
+                        const timePart = event.startTime && event.endTime ? `, ${event.startTime} – ${event.endTime}` : '';
+                        return `${datePart}${timePart}`;
+                      }
+                      if (event.date) {
+                        const d = parseISO(event.date);
+                        const datePart = format(d, 'MMM d, yyyy');
+                        const timePart = event.time ? `, ${event.time}` : '';
+                        return `${datePart}${timePart}`;
+                      }
+                      return 'Date TBD';
+                    } catch {
+                      return 'Date TBD';
+                    }
+                  })();
+
+                  return (
+                    <div key={event.id} className="flex items-center space-x-3 p-3 border rounded-lg">
+                      <div className="flex-shrink-0">
+                        <Calendar className="h-5 w-5 text-primary" />
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{event.name}</p>
+                        <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          <span>{event.location}</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{formattedDate}</span>
+                        </div>
+                      </div>
+                      <Button asChild size="sm">
+                        <Link href={`/events/${event.id}`}>View</Link>
+                      </Button>
                     </div>
-                    <Button asChild size="sm">
-                      <Link href={`/events/${event.id}`}>View</Link>
-                    </Button>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-4 text-muted-foreground">
                   <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -536,71 +649,82 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Real-time Leaderboard Widget */}
-          <LeaderboardWidget maxEntries={5} showViewAll={true} />
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Waste Collected" value={dashboardStats.totalWasteCollected.toFixed(2) + " kg"} description="Total waste collected by all volunteers" icon={Trash2} />
-        <StatCard title="Events Attended" value={dashboardStats.userEventsAttended} description="Events you've participated in" icon={CalendarCheck2} />
-        <StatCard title="Points Earned" value={dashboardStats.userPoints.toString()} description="Your total points earned" icon={Award} />
-        <StatCard title="Badges Unlocked" value={dashboardStats.userBadges.toString()} description="Badges you've earned" icon={Trophy} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-7">
-        <div className="col-span-12 lg:col-span-4 space-y-4">
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle>Your Impact Over Time</CardTitle>
-              <CardDescription>Waste collection (in kg) over the last 7 months.</CardDescription>
-            </CardHeader>
-            <CardContent className="pl-2">
-              <ImpactChart data={monthlyChartData} />
-            </CardContent>
-          </Card>
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* Real-time Leaderboards (admin only to avoid permission issues) */}
+          {isAdmin ? (
+            <>
+              <LeaderboardWidget maxEntries={5} showViewAll={true} />
+              <NgoLeaderboardWidget maxEntries={5} showViewAll={true} sortBy="waste" />
+            </>
+          ) : (
             <Card className="shadow-sm hover:shadow-md transition-shadow">
-               <CardHeader>
-                <CardTitle>Waste Composition</CardTitle>
-                <CardDescription>Breakdown of collected waste types.</CardDescription>
+              <CardHeader>
+                <CardTitle className="font-headline">Leaderboard & Rewards</CardTitle>
+                <CardDescription>Your points and badges are tracked live</CardDescription>
               </CardHeader>
               <CardContent>
-                <WasteCompositionChart data={wasteCompositionData} />
+                <div className="text-sm text-muted-foreground">Global leaderboards are visible to admins. Keep participating to climb ranks and earn badges.</div>
               </CardContent>
             </Card>
-            <Card className="shadow-sm hover:shadow-md transition-shadow">
-               <CardHeader>
-                <CardTitle>Top Performing Events</CardTitle>
-                <CardDescription>Most waste collected (Top 5).</CardDescription>
-              </CardHeader>
-              <CardContent className="pr-0">
-                <TopEventsChart data={topEventsData} />
-              </CardContent>
-            </Card>
-          </div>
+          )}
         </div>
+      </div>
 
-        <Card className="col-span-12 lg:col-span-3 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            {/* Add any necessary header content here */}
+      {/* Recent Waste Logs with static avatars */}
+      <div className="grid grid-cols-1 mt-4">
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <History className="h-5 w-5" />
+              <span>Recent Waste Logs</span>
+            </CardTitle>
+            <CardDescription>Showing latest 7 logs</CardDescription>
           </CardHeader>
-          <CardContent className="relative flex items-center justify-center p-0">
-            {isHeatmapLoading && (
-              <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10">
-                {/* Add any necessary loading content here */}
-              </div>
-            )}
-            <Image
-              src={heatmapImageUrl}
-              alt="AI-generated heatmap of volunteer activity"
-              width={1200}
-              height={400}
-              className="rounded-lg object-cover w-full border"
-            />
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Volunteer</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Weight (kg)</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentWasteLogs.slice(0, 7).map((log, i) => {
+const staticAvatars = ['/image1.png','/image_1.jpg','/image_2.jpg','/image_3.jpg','/logo.jpg'];
+const avatarSrc = staticAvatars[i % staticAvatars.length];
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={avatarSrc} alt={log.volunteerName} />
+                            <AvatarFallback>{log.volunteerInitials}</AvatarFallback>
+                          </Avatar>
+                          <div className="text-sm font-medium">{log.volunteerName}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {log.eventLink && log.eventLink !== '#' ? (
+                          <Link href={log.eventLink} className="text-blue-600 hover:underline text-sm">{log.eventName}</Link>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">{log.eventName}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">{log.type}</TableCell>
+                      <TableCell className="text-sm">{log.weightKg}</TableCell>
+                      <TableCell className="text-sm">{log.logDateFormatted}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </div>
+
+      {/* Removed duplicate stat cards and secondary impact section to avoid repetition */}
     </div>
   );
 }

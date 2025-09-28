@@ -8,11 +8,12 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { logWasteForEvent, getAllEvents } from '@/lib/firebase';
+import { logWasteForEvent, getAllEvents, checkUserRegistration } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
 import type { Event } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
 
 const wasteLogFormSchema = z.object({
   eventId: z.string({ required_error: 'Please select an event.' }),
@@ -38,6 +39,7 @@ export function WasteLogForm() {
   const { userProfile } = useAuth();
   const [activeEvents, setActiveEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRegisteredForSelected, setIsRegisteredForSelected] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchEvents() {
@@ -63,10 +65,38 @@ export function WasteLogForm() {
   });
 
   const selectedWasteType = form.watch('wasteType');
+  const selectedEventId = form.watch('eventId');
+
+  useEffect(() => {
+    async function checkRegistration() {
+      if (!userProfile || !selectedEventId) {
+        setIsRegisteredForSelected(null);
+        return;
+      }
+      const authUid = getAuth().currentUser?.uid || userProfile.uid;
+      if (!authUid) {
+        setIsRegisteredForSelected(null);
+        return;
+      }
+      const registered = await checkUserRegistration(selectedEventId, authUid);
+      setIsRegisteredForSelected(registered);
+    }
+    checkRegistration();
+  }, [selectedEventId, userProfile?.uid]);
 
   async function onSubmit(data: WasteLogFormValues) {
     if (!userProfile) {
       toast({ title: "Authentication Required", description: "You must be logged in to log waste.", variant: "destructive" });
+      return;
+    }
+    const authUid = getAuth().currentUser?.uid || userProfile.uid;
+    if (!authUid) {
+      toast({ title: "Authentication Required", description: "Please log in again to log waste.", variant: "destructive" });
+      return;
+    }
+    const registered = await checkUserRegistration(data.eventId, authUid);
+    if (!registered) {
+      toast({ title: "Registration Required", description: "Please register for this event before logging waste.", variant: 'destructive' });
       return;
     }
     setIsLoading(true);
@@ -116,7 +146,12 @@ export function WasteLogForm() {
                   ))}
                 </SelectContent>
               </Select>
-              <FormDescription>Select the event for which you are logging waste.</FormDescription>
+              <FormDescription>
+                Select the event for which you are logging waste.
+                {isRegisteredForSelected === false && (
+                  <span className="text-destructive ml-1">You must be registered for this event to log waste.</span>
+                )}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -177,7 +212,7 @@ export function WasteLogForm() {
           )}
         />
 
-        <Button type="submit" size="lg" disabled={isLoading}>
+        <Button type="submit" size="lg" disabled={isLoading || isRegisteredForSelected === false}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Log Waste
         </Button>

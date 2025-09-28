@@ -26,7 +26,8 @@ const GenerateSocialMediaPostInputSchema = z.object({
 export type GenerateSocialMediaPostInput = z.infer<typeof GenerateSocialMediaPostInputSchema>;
 
 const GenerateSocialMediaPostOutputSchema = z.object({
-  socialMediaPost: z.string().describe('The generated social media post content.'),
+  postContent: z.string().describe('The generated social media post content.'),
+  hashtags: z.array(z.string()).default([]).describe('Suggested hashtags for the post.'),
 });
 
 export type GenerateSocialMediaPostOutput = z.infer<typeof GenerateSocialMediaPostOutputSchema>;
@@ -62,3 +63,35 @@ export const generateSocialMediaPostFlow = ai.defineFlow(
     return output!;
   }
 );
+
+export async function generateSocialMediaPost(
+  input: GenerateSocialMediaPostInput
+): Promise<GenerateSocialMediaPostOutput> {
+  const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+
+  if (hasGemini) {
+    try {
+      return await generateSocialMediaPostFlow(input);
+    } catch (e) {
+      // Fall through to offline fallback on any runtime error
+      console.warn('Genkit social media post generation failed; using fallback.', e);
+    }
+  }
+
+  const tonePrefix = input.desiredTone
+    ? `${input.desiredTone.charAt(0).toUpperCase() + input.desiredTone.slice(1)}: `
+    : '';
+  const postContent = `${tonePrefix}${input.eventName} — ${input.eventDescription}
+Join us on ${input.eventDate} at ${input.eventLocation}. ${
+    input.callToAction || 'Register today'
+  } and help keep our shores clean! Spread the word to ${input.targetAudience}.`;
+
+  const baseTags = ['#BeachCleanup', '#Community', '#ProtectOurOceans', '#Volunteer'];
+  const extraTags: string[] = [];
+  if (/student|school/i.test(input.targetAudience)) extraTags.push('#Students');
+  if (/family|families/i.test(input.targetAudience)) extraTags.push('#FamilyFriendly');
+  if (/urgent/i.test(input.desiredTone)) extraTags.push('#ActNow');
+  const hashtags = Array.from(new Set([...baseTags, ...extraTags]));
+
+  return { postContent, hashtags };
+}

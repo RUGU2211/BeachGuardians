@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-body), sans-serif;
 }
@@ -91,4 +95,28 @@ h1, h2, h3, h4, h5, h6 {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* Speed up animations and transitions globally */
+@layer utilities {
+  /* Faster default transition durations for common utilities */
+  .duration-200 { transition-duration: 120ms !important; }
+  .duration-300 { transition-duration: 150ms !important; }
+  .duration-500 { transition-duration: 200ms !important; }
+  .duration-700 { transition-duration: 250ms !important; }
+  .duration-1000 { transition-duration: 300ms !important; }
+
+  /* Speed up common keyframe animations */
+  .animate-spin { animation-duration: 600ms !important; }
+  .animate-pulse { animation-duration: 800ms !important; }
+}
+
+/* Make clicks feel snappier on touch devices */
+button,
+a,
+[role="button"],
+input,
+select,
+textarea {
+  touch-action: manipulation;
 }

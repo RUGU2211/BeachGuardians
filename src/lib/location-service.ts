@@ -1,4 +1,4 @@
-import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { UserProfile } from './types';
 
@@ -14,6 +14,10 @@ class LocationService {
   private updateInterval: number = 5 * 60 * 1000; // 5 minutes default
   private isTracking: boolean = false;
   private userId: string | null = null;
+  private lastWriteTs: number = 0;
+  private lastLat?: number;
+  private lastLng?: number;
+  private minDistanceMeters: number = Number(process.env.NEXT_PUBLIC_LOCATION_MIN_DISTANCE_METERS || 100);
 
   constructor() {
     // Check if geolocation is supported
@@ -39,6 +43,9 @@ class LocationService {
     this.userId = userId;
     this.updateInterval = parseInt(updateIntervalMinutes) * 60 * 1000;
     this.isTracking = true;
+    this.lastWriteTs = 0;
+    this.lastLat = undefined;
+    this.lastLng = undefined;
 
     try {
       // Get initial position
@@ -130,16 +137,42 @@ class LocationService {
       return;
     }
 
+    // Gate writes by environment: default off in development unless explicitly enabled
+    const enableWritesEnv = process.env.NEXT_PUBLIC_ENABLE_LIVE_LOCATION_WRITES;
+    const isDev = process.env.NODE_ENV === 'development';
+    const writesEnabled = enableWritesEnv === 'true' ? true : enableWritesEnv === 'false' ? false : !isDev;
+
+    if (!writesEnabled) {
+      return; // Skip network writes in development to avoid quota usage
+    }
+
+    // Throttle writes by time and distance to reduce Firestore load
+    const now = Date.now();
+    const timeSinceLast = now - (this.lastWriteTs || 0);
+    const movedMeters = this.lastLat != null && this.lastLng != null
+      ? this.haversineMeters(this.lastLat, this.lastLng, locationData.latitude, locationData.longitude)
+      : Infinity;
+    const shouldWrite = timeSinceLast >= this.updateInterval || movedMeters >= this.minDistanceMeters;
+
+    if (!shouldWrite) {
+      return;
+    }
+
     try {
       const userDocRef = doc(db, 'users', this.userId);
       await updateDoc(userDocRef, {
-        currentLocation: {
+        // Use 'location' field to match map listeners
+        location: {
           latitude: locationData.latitude,
           longitude: locationData.longitude,
           timestamp: locationData.timestamp,
         },
+        lastSeen: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
+      this.lastWriteTs = now;
+      this.lastLat = locationData.latitude;
+      this.lastLng = locationData.longitude;
     } catch (error) {
       console.error('Failed to update location in Firestore:', error);
     }
@@ -209,7 +242,17 @@ class LocationService {
       return false;
     }
   }
+
+  private haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371000; // meters
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
 }
 
 // Export singleton instance
-export const locationService = new LocationService(); 
+export const locationService = new LocationService();

@@ -1,32 +1,41 @@
 'use client';
 
 import { LeaderboardTable } from '@/components/gamification/LeaderboardTable';
+import { NgoLeaderboardTable } from '@/components/gamification/NgoLeaderboardTable';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Trophy, Award, Star, Loader2, FileText } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useEffect } from 'react';
-import { getRealTimeLeaderboard, getCurrentUserRank } from '@/lib/firebase';
+import { getRealTimeLeaderboard, getCurrentUserRank, getRealTimeNgoLeaderboard } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import type { LeaderboardEntry } from '@/lib/types';
+import type { LeaderboardEntry, NgoLeaderboardEntry } from '@/lib/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useSearchParams } from 'next/navigation';
 
 export default function LeaderboardPage() {
   const { userProfile } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') === 'ngo') ? 'ngo' : 'volunteers';
   const currentUserId = userProfile?.uid;
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRank, setUserRank] = useState<number | null>(null);
   const [loadingCertificates, setLoadingCertificates] = useState<Set<string>>(new Set());
+  const [ngoLeaderboard, setNgoLeaderboard] = useState<NgoLeaderboardEntry[]>([]);
+  const [loadingNgo, setLoadingNgo] = useState(true);
+  const [tabValue, setTabValue] = useState<'volunteers' | 'ngo'>(initialTab as 'volunteers' | 'ngo');
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribeVol: (() => void) | undefined;
+    let unsubscribeNgo: (() => void) | undefined;
 
     const setupLeaderboard = async () => {
       try {
-        // Set up real-time leaderboard listener
-        unsubscribe = await getRealTimeLeaderboard((data) => {
+        // Set up real-time volunteer leaderboard listener
+        unsubscribeVol = await getRealTimeLeaderboard((data) => {
           setLeaderboard(data);
           setLoading(false);
         });
@@ -36,9 +45,16 @@ export default function LeaderboardPage() {
           const rank = await getCurrentUserRank(currentUserId);
           setUserRank(rank);
         }
+
+        // Set up NGO leaderboard listener
+        unsubscribeNgo = await getRealTimeNgoLeaderboard((data) => {
+          setNgoLeaderboard(data);
+          setLoadingNgo(false);
+        });
       } catch (error) {
         console.error('Error setting up leaderboard:', error);
         setLoading(false);
+        setLoadingNgo(false);
       }
     };
 
@@ -46,9 +62,8 @@ export default function LeaderboardPage() {
 
     // Cleanup function
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribeVol) unsubscribeVol();
+      if (unsubscribeNgo) unsubscribeNgo();
     };
   }, [currentUserId]);
 
@@ -109,7 +124,7 @@ export default function LeaderboardPage() {
     }
   };
 
-  if (loading) {
+  if (loading && loadingNgo) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-theme(space.32))]">
         <div className="text-center space-y-4">
@@ -131,7 +146,7 @@ export default function LeaderboardPage() {
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           See who's leading the charge in our cleanup efforts! Points are awarded for participation and waste collection.
         </p>
-        {userRank && (
+        {tabValue === 'volunteers' && userRank && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 inline-block">
             <p className="text-sm text-blue-800">
               <strong>Your Rank:</strong> #{userRank} of {leaderboard.length} volunteers
@@ -139,8 +154,16 @@ export default function LeaderboardPage() {
           </div>
         )}
       </div>
+      <Tabs value={tabValue} onValueChange={(v) => setTabValue(v as 'volunteers' | 'ngo')}>
+        <div className="flex items-center justify-center">
+          <TabsList>
+            <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
+            <TabsTrigger value="ngo">NGOs</TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* Top 3 Podium */}
+        <TabsContent value="volunteers">
+      {/* Top 3 Podium - Volunteers */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
         {/* 2nd Place */}
         <div className="order-2 md:order-1 text-center">
@@ -252,6 +275,47 @@ export default function LeaderboardPage() {
           )}
         </CardContent>
       </Card>
+      </TabsContent>
+
+      {/* NGOs Tab */}
+      <TabsContent value="ngo">
+        {/* NGO Leaderboard */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top NGOs by Waste</CardTitle>
+            <CardDescription>
+              Ranked by total kilograms of waste collected across organized events.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {ngoLeaderboard.length > 0 ? (
+              <NgoLeaderboardTable entries={ngoLeaderboard} sortBy="waste" />
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No NGO contributions found yet. Organize events and log waste to appear here.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Top NGOs by Events</CardTitle>
+            <CardDescription>
+              Ranked by number of events organized.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {ngoLeaderboard.length > 0 ? (
+              <NgoLeaderboardTable entries={ngoLeaderboard} sortBy="events" />
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No NGO events found yet. Create events to appear here.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+      </Tabs>
 
       {/* How Points Work Card */}
       <Card>

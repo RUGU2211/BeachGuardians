@@ -15,7 +15,7 @@ export default function MapPage() {
     <div className="container mx-auto p-4">
       <h1 className="mb-4 text-2xl font-bold">Live Location Map</h1>
       <div style={{ height: '70vh', width: '100%' }}>
-        <LiveLocationMap isAdmin={userProfile?.role === 'admin' && userProfile.isVerified === true} />
+        <LiveLocationMap isAdmin={userProfile?.role === 'admin' && userProfile.isAdminVerified === true} />
       </div>
     </div>
   );

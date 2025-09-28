@@ -28,7 +28,24 @@ const SummarizeCleanupEventOutputSchema = z.object({
 export type SummarizeCleanupEventOutput = z.infer<typeof SummarizeCleanupEventOutputSchema>;
 
 export async function summarizeCleanupEvent(input: SummarizeCleanupEventInput): Promise<SummarizeCleanupEventOutput> {
-  return summarizeCleanupEventFlow(input);
+  const hasGemini = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  if (hasGemini) {
+    try {
+      return await summarizeCleanupEventFlow(input);
+    } catch (e) {
+      console.warn('Genkit cleanup summary failed; using fallback.', e);
+    }
+  }
+
+  const summary = `${input.eventName} — ${input.location} (${input.date})
+Volunteers: ${input.totalVolunteers}
+Total Waste Collected: ${input.totalWasteCollectedKg} kg
+Types of Waste: ${input.typesOfWasteCollected || 'N/A'}
+Notable Observations: ${input.notableObservations || 'None reported'}
+
+This event showcased strong community engagement and tangible environmental impact. Continued outreach and education will help reduce waste and strengthen local stewardship.`;
+
+  return { summary };
 }
 
 const prompt = ai.definePrompt({
