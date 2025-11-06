@@ -22,25 +22,13 @@ export interface DirectionsProvider {
   color: string;
 }
 
-// Available map providers for directions
+// Available map providers for directions - Only Google Maps
 export const DIRECTIONS_PROVIDERS: DirectionsProvider[] = [
   {
     name: 'Google Maps',
     url: 'https://www.google.com/maps/dir/?api=1&destination=',
     icon: '🗺️',
     color: 'bg-blue-500 hover:bg-blue-600'
-  },
-  {
-    name: 'Apple Maps',
-    url: 'http://maps.apple.com/?daddr=',
-    icon: '🍎',
-    color: 'bg-gray-500 hover:bg-gray-600'
-  },
-  {
-    name: 'Waze',
-    url: 'https://waze.com/ul?q=',
-    icon: '🚗',
-    color: 'bg-purple-500 hover:bg-purple-600'
   }
 ];
 

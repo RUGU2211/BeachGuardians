@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin';
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.ADMIN_KEY;
 
-function getOrInitializeAdminApp(): admin.app.App {
+export function getOrInitializeAdminApp(): admin.app.App {
   if (admin.apps.length) {
     return admin.app();
   }
@@ -15,6 +15,7 @@ function getOrInitializeAdminApp(): admin.app.App {
     return admin.initializeApp({
       projectId: 'shoreline-tzs9g-47d06',
       databaseURL: process.env.ADMIN_RTDB_URL || 'https://shoreline-tzs9g-47d06-default-rtdb.firebaseio.com/',
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'shoreline-tzs9g-47d06.firebasestorage.app',
     });
   }
   
@@ -43,6 +44,7 @@ function getOrInitializeAdminApp(): admin.app.App {
   return admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: process.env.ADMIN_RTDB_URL || 'https://shoreline-tzs9g-47d06-default-rtdb.firebaseio.com/',
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'shoreline-tzs9g-47d06.firebasestorage.app',
   });
 }
 

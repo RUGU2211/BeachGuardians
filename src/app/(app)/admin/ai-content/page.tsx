@@ -33,6 +33,10 @@ export default function AIContentPage() {
   const [posterEventLocation, setPosterEventLocation] = useState('');
   const [posterEventDescription, setPosterEventDescription] = useState('');
   const [posterStyle, setPosterStyle] = useState('modern');
+  const [posterColorScheme, setPosterColorScheme] = useState('blue-green');
+  const [posterDesignTheme, setPosterDesignTheme] = useState('charity');
+  const [posterCallToAction, setPosterCallToAction] = useState('Join us for a beach cleanup event');
+  const [posterAdditionalPrompt, setPosterAdditionalPrompt] = useState('');
   const [generatedPosterUrl, setGeneratedPosterUrl] = useState('');
   const [isGeneratingPoster, setIsGeneratingPoster] = useState(false);
 
@@ -137,20 +141,45 @@ export default function AIContentPage() {
     try {
       const result = await imageGen.callAI('generate-event-image', {
         eventName: posterEventName,
+        eventDate: posterEventDate,
+        eventLocation: posterEventLocation,
         eventDescription: posterEventDescription,
         format: posterStyle === 'banner' ? 'banner' : 'poster',
+        style: posterStyle,
+        colorScheme: posterColorScheme,
+        designTheme: posterDesignTheme,
+        callToAction: posterCallToAction,
+        additionalPrompt: posterAdditionalPrompt,
       });
-      setGeneratedPosterUrl(result?.imageDataUri || '');
+      
+      const imageUrl = result?.imageDataUri || '';
+      setGeneratedPosterUrl(imageUrl);
 
-      toast({
-        title: 'Poster Generated!',
-        description: 'Your event poster has been created successfully.',
-      });
-    } catch (error) {
+      // Check if it's a placeholder (indicates API key not configured or generation failed)
+      if (imageUrl && imageUrl.includes('placehold.co')) {
+        toast({
+          title: 'Poster Generation Unavailable',
+          description: 'Gemini API key not configured. Please configure GEMINI_API_KEY in your environment variables to generate posters.',
+          variant: 'destructive',
+        });
+      } else if (imageUrl) {
+        toast({
+          title: 'Poster Generated!',
+          description: 'Your event poster has been created successfully.',
+        });
+      } else {
+        toast({
+          title: 'Poster Generation Failed',
+          description: 'Failed to generate poster. Please check your Gemini API key configuration and ensure Imagen API is enabled.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
       console.error('Error generating poster:', error);
+      const errorMessage = error?.message || 'Failed to generate poster. Please try again.';
       toast({
         title: 'Error Generating Poster',
-        description: 'Failed to generate poster. Please try again.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -535,20 +564,73 @@ export default function AIContentPage() {
                   <div className="space-y-2">
                     <Label htmlFor="poster-event-description">Event Description</Label>
                     <Textarea id="poster-event-description" placeholder="Describe the event goals, what to bring, etc." value={posterEventDescription} onChange={(e) => setPosterEventDescription(e.target.value)} rows={3} />
-              </div>
+                  </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="poster-style">Poster Style</Label>
-                    <Select value={posterStyle} onValueChange={setPosterStyle}>
-                      <SelectTrigger><SelectValue placeholder="Select a style" /></SelectTrigger>
+                    <Label htmlFor="poster-call-to-action">Call to Action</Label>
+                    <Input id="poster-call-to-action" placeholder="Join us for a beach cleanup event" value={posterCallToAction} onChange={(e) => setPosterCallToAction(e.target.value)} />
+                    <p className="text-xs text-muted-foreground">Short message to encourage participation (e.g., "Join us!", "Help make a difference!")</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="poster-style">Poster Style</Label>
+                      <Select value={posterStyle} onValueChange={setPosterStyle}>
+                        <SelectTrigger><SelectValue placeholder="Select a style" /></SelectTrigger>
                         <SelectContent>
-                        <SelectItem value="modern">Modern</SelectItem>
-                        <SelectItem value="vintage">Vintage</SelectItem>
-                        <SelectItem value="minimalist">Minimalist</SelectItem>
-                        <SelectItem value="colorful">Colorful</SelectItem>
-                        <SelectItem value="professional">Professional</SelectItem>
+                          <SelectItem value="modern">Modern</SelectItem>
+                          <SelectItem value="vintage">Vintage</SelectItem>
+                          <SelectItem value="minimalist">Minimalist</SelectItem>
+                          <SelectItem value="colorful">Colorful</SelectItem>
+                          <SelectItem value="professional">Professional</SelectItem>
+                          <SelectItem value="charity">Charity/NGO Style</SelectItem>
+                          <SelectItem value="bold">Bold & Impactful</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="poster-color-scheme">Color Scheme</Label>
+                      <Select value={posterColorScheme} onValueChange={setPosterColorScheme}>
+                        <SelectTrigger><SelectValue placeholder="Select colors" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="blue-green">Blue & Green (Ocean Theme)</SelectItem>
+                          <SelectItem value="red-white">Red & White (Bold)</SelectItem>
+                          <SelectItem value="teal-yellow">Teal & Yellow (Vibrant)</SelectItem>
+                          <SelectItem value="orange-blue">Orange & Blue (Warm)</SelectItem>
+                          <SelectItem value="purple-pink">Purple & Pink (Creative)</SelectItem>
+                          <SelectItem value="earth-tones">Earth Tones (Natural)</SelectItem>
+                          <SelectItem value="gradient">Gradient (Modern)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="poster-design-theme">Design Theme</Label>
+                    <Select value={posterDesignTheme} onValueChange={setPosterDesignTheme}>
+                      <SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="charity">Charity/NGO (Professional)</SelectItem>
+                        <SelectItem value="community">Community Event (Friendly)</SelectItem>
+                        <SelectItem value="environmental">Environmental (Nature Focus)</SelectItem>
+                        <SelectItem value="action">Action-Oriented (Dynamic)</SelectItem>
+                        <SelectItem value="elegant">Elegant (Sophisticated)</SelectItem>
+                        <SelectItem value="youth">Youth-Friendly (Energetic)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="poster-additional-prompt">Additional Design Details (Optional)</Label>
+                    <Textarea 
+                      id="poster-additional-prompt" 
+                      placeholder="E.g., Include images of volunteers, add heart symbols, use geometric shapes, include world map, etc." 
+                      value={posterAdditionalPrompt} 
+                      onChange={(e) => setPosterAdditionalPrompt(e.target.value)} 
+                      rows={2}
+                    />
+                    <p className="text-xs text-muted-foreground">Add specific design elements, symbols, or visual elements you want in the poster</p>
                   </div>
 
                   <Button onClick={handleGeneratePoster} disabled={!canGeneratePoster || isGeneratingPoster} className="w-full">

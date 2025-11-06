@@ -352,42 +352,80 @@ export default function EventDetailPage() {
           </CardDescription>
 
           {/* Supporting Document Section - Visible to all users before registration */}
-          {currentEvent.supportingDocumentUrl && (
-            <div className="mt-4 p-4 border rounded-lg bg-muted/50">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center space-x-3">
-                  <FileText className="h-6 w-6 text-primary" />
-                  <div>
-                    <p className="font-medium">Supporting Document</p>
-                    <p className="text-sm text-muted-foreground">Government permission document - View before registering</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      window.open(currentEvent.supportingDocumentUrl!, '_blank');
-                    }}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    View PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = currentEvent.supportingDocumentUrl!;
-                      link.download = `event-${currentEvent.id}-document.pdf`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
-                  </Button>
+          {(currentEvent.googleDriveLink || currentEvent.supportingDocumentUrl) && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center space-x-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <p className="font-medium">Supporting Document</p>
+                  <p className="text-sm text-muted-foreground">Government permission document - View before registering</p>
                 </div>
               </div>
+              
+              {/* Google Drive Document Link */}
+              {currentEvent.googleDriveLink && (
+                <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center space-x-3">
+                      <FileText className="h-6 w-6 text-primary" />
+                      <div>
+                        <p className="font-medium">Supporting Document</p>
+                        <p className="text-sm text-muted-foreground">Government permission document - View before registering</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="default"
+                      size="lg"
+                      onClick={() => {
+                        window.open(currentEvent.googleDriveLink!, '_blank');
+                      }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Open Document
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Fallback for old supportingDocumentUrl (PDF) */}
+              {!currentEvent.googleDriveLink && currentEvent.supportingDocumentUrl && (
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center space-x-3">
+                      <FileText className="h-6 w-6 text-primary" />
+                      <div>
+                        <p className="font-medium">Supporting Document</p>
+                        <p className="text-sm text-muted-foreground">PDF Document</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          window.open(currentEvent.supportingDocumentUrl!, '_blank');
+                        }}
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        View PDF
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = currentEvent.supportingDocumentUrl!;
+                          link.download = `event-${currentEvent.id}-document.pdf`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Download
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

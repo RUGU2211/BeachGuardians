@@ -8,7 +8,18 @@ async function handler(
 ): Promise<NextResponse> {
   try {
     const body = await request.json();
-    const { eventName, eventDescription, format = 'poster' } = body;
+    const { 
+      eventName, 
+      eventDescription, 
+      eventDate,
+      eventLocation,
+      format = 'poster',
+      style = 'modern',
+      colorScheme = 'blue-green',
+      designTheme = 'charity',
+      callToAction = '',
+      additionalPrompt = ''
+    } = body;
 
     // Validate required fields
     if (!eventName || !eventDescription) {
@@ -30,7 +41,14 @@ async function handler(
     const result = await generateEventImage({
       eventName,
       eventDescription,
-      format: format as 'poster' | 'banner'
+      eventDate: eventDate || '',
+      eventLocation: eventLocation || '',
+      format: format as 'poster' | 'banner',
+      style: style || 'modern',
+      colorScheme: colorScheme || 'blue-green',
+      designTheme: designTheme || 'charity',
+      callToAction: callToAction || '',
+      additionalPrompt: additionalPrompt || ''
     });
 
     // Log AI usage for admin tracking

@@ -103,9 +103,18 @@ export function LocationPicker({
         const results = await searchIndianLocations(newValue);
         setSuggestions(results);
         setShowSuggestions(true);
-      } catch (error) {
-        console.error('Error searching Indian locations:', error);
+      } catch (error: any) {
+        // Only log non-timeout errors to avoid console spam
+        if (!error.message?.includes('timeout')) {
+          console.error('Error searching Indian locations:', error);
+        }
+        // Show empty suggestions on error (graceful degradation)
         setSuggestions([]);
+        // Optionally show a user-friendly message for timeout
+        if (error.message?.includes('timeout')) {
+          // Could show a toast here if needed
+          console.warn('Location search timed out. Please try again.');
+        }
       } finally {
         setIsLoading(false);
       }

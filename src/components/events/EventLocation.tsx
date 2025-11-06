@@ -199,21 +199,16 @@ export function EventLocation({
 
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">Get Directions:</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {DIRECTIONS_PROVIDERS.map((provider) => (
-              <Button
-                key={provider.name}
-                variant="outline"
-                size="sm"
-                onClick={() => handleGetDirections(provider)}
-                className={`justify-start ${provider.color} text-white border-0 hover:text-white`}
-              >
-                <span className="mr-2">{provider.icon}</span>
-                {provider.name}
-                <ExternalLink className="h-3 w-3 ml-auto" />
-              </Button>
-            ))}
-          </div>
+          <Button
+            variant="default"
+            size="default"
+            onClick={() => handleGetDirections(DIRECTIONS_PROVIDERS[0])}
+            className="w-full sm:w-auto"
+          >
+            <span className="mr-2">🗺️</span>
+            Google Maps
+            <ExternalLink className="h-4 w-4 ml-2" />
+          </Button>
         </div>
 
         {locationDetails?.coordinates && (

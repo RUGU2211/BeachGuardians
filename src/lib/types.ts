@@ -66,7 +66,8 @@ export interface Event {
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   wasteCollectedKg?: number;
   checkedInVolunteers?: Record<string, { checkInTime: string }>; // Maps UID to check-in time
-  supportingDocumentUrl?: string; // URL to government permission PDF document
+  supportingDocumentUrl?: string; // URL to government permission PDF document (deprecated - use googleDriveLink)
+  googleDriveLink?: string; // Google Drive link to supporting document
   
   // Enhanced location fields
   locationDetails?: {

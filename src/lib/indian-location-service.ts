@@ -53,43 +53,62 @@ export async function searchIndianLocations(query: string): Promise<IndianLocati
     const searchQuery = `${query}, India`;
     const encodedQuery = encodeURIComponent(searchQuery);
     
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?` +
-      `q=${encodedQuery}&` +
-      `format=json&` +
-      `addressdetails=1&` +
-      `limit=10&` +
-      `countrycodes=in&` + // Restrict to India
-      `accept-language=en`,
-      {
-        headers: {
-          'User-Agent': 'BeachGuardians/1.0 (contact@beachguardians.org)'
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Nominatim API error: ${response.status}`);
-    }
-
-    const results: NominatimResult[] = await response.json();
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    return results.map(result => ({
-      address: result.display_name,
-      coordinates: {
-        latitude: parseFloat(result.lat),
-        longitude: parseFloat(result.lon)
-      },
-      placeId: `nominatim_${result.place_id}`,
-      city: result.address.city || result.address.town || result.address.village,
-      state: result.address.state,
-      country: result.address.country || 'India',
-      postalCode: result.address.postcode,
-      district: result.address.state_district || result.address.county,
-      type: result.type
-    }));
-  } catch (error) {
-    console.error('Error searching Indian locations:', error);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodedQuery}&` +
+        `format=json&` +
+        `addressdetails=1&` +
+        `limit=10&` +
+        `countrycodes=in&` + // Restrict to India
+        `accept-language=en`,
+        {
+          headers: {
+            'User-Agent': 'BeachGuardians/1.0 (contact@beachguardians.org)'
+          },
+          signal: controller.signal
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Nominatim API error: ${response.status}`);
+      }
+
+      const results: NominatimResult[] = await response.json();
+      
+      return results.map(result => ({
+        address: result.display_name,
+        coordinates: {
+          latitude: parseFloat(result.lat),
+          longitude: parseFloat(result.lon)
+        },
+        placeId: `nominatim_${result.place_id}`,
+        city: result.address.city || result.address.town || result.address.village,
+        state: result.address.state,
+        country: result.address.country || 'India',
+        postalCode: result.address.postcode,
+        district: result.address.state_district || result.address.county,
+        type: result.type
+      }));
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout: Location service took too long to respond');
+      }
+      throw fetchError;
+    }
+  } catch (error: any) {
+    // Only log non-timeout errors to avoid console spam
+    if (!error.message?.includes('timeout')) {
+      console.error('Error searching Indian locations:', error);
+    }
+    // Return empty array instead of throwing to allow graceful degradation
     return [];
   }
 }
