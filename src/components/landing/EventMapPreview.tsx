@@ -27,15 +27,18 @@ export default function EventMapPreview({ events: incomingEvents, compact = fals
     return leafletLoaderRef.current;
   };
 
+  // Always use real-time updates for events
   useEffect(() => {
-    setEvents(incomingEvents || []);
-  }, [incomingEvents]);
-
-  useEffect(() => {
-    if (incomingEvents && incomingEvents.length >= 0) {
-      // If events are provided by parent, skip fetching.
-      return;
+    // If events are provided by parent, use them as initial data
+    if (incomingEvents && incomingEvents.length > 0) {
+      const withCoords = incomingEvents.filter((e: any) => {
+        const coords = e?.locationDetails?.coordinates;
+        return (e.latitude && e.longitude) || (coords?.latitude && coords?.longitude);
+      });
+      setEvents(withCoords);
     }
+
+    // Always subscribe to real-time updates
     const unsubscribe = subscribeToEvents(
       (data) => {
         const withCoords = data.filter((e: any) => {
@@ -46,7 +49,10 @@ export default function EventMapPreview({ events: incomingEvents, compact = fals
       },
       (err) => {
         console.warn('Event subscription failed:', err);
-        setEvents([]);
+        // Only clear events if we don't have incoming events
+        if (!incomingEvents || incomingEvents.length === 0) {
+          setEvents([]);
+        }
       }
     );
     return () => unsubscribe();

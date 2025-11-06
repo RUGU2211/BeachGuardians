@@ -1,35 +1,44 @@
-// Google Gemini 2.0 Flash API for image generation (No Vertex AI Required)
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+// Vertex AI Imagen 3 for image generation using REST API with API Key
+// Using the same project as Firebase for consistency
+const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID || "shoreline-tzs9g-47d06";
+const LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+const MODEL = "imagen-3.0-generate-001";
+const VERTEX_AI_API_KEY = process.env.VERTEX_AI_API_KEY || process.env.GOOGLE_CLOUD_API_KEY;
 
 export async function generateEventImage({ prompt, format = 'poster' }: { prompt: string; format?: 'poster' | 'banner' }): Promise<string | null> {
-  // Return null if Gemini API key is not configured
-  if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key not configured. Skipping image generation.');
+  // Return null if Vertex AI API key is not configured
+  if (!VERTEX_AI_API_KEY) {
+    console.warn('Vertex AI API key not configured. Skipping image generation.');
     return null;
   }
 
   try {
-    const apiKey = GEMINI_API_KEY;
+    console.log('[IMAGEN] Generating using Vertex AI Imagen 3...');
+    console.log('[IMAGEN] Format:', format);
+    console.log('[IMAGEN] Project:', PROJECT_ID, 'Location:', LOCATION);
     
-    // Use Gemini 2.0 Flash Experimental for native image generation
-    // Model: gemini-2.0-flash-exp (supports native image generation)
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+    // Vertex AI Imagen API endpoint using API key
+    // Using the Generative AI API endpoint format with API key (similar to Gemini API)
+    // Try both endpoint formats
+    let apiUrl = `https://aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict?key=${VERTEX_AI_API_KEY}`;
     
-    // Prepare the request payload for Gemini 2.0 Flash image generation
+    // Alternative endpoint format (if the above doesn't work)
+    // const apiUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict?key=${VERTEX_AI_API_KEY}`;
+
+    // Request body for Imagen 3
     const requestBody = {
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
+      instances: [{
+        prompt: prompt
       }],
-      generationConfig: {
-        responseModalities: ["IMAGE"], // Request image generation
-        temperature: 0.7,
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: format === 'banner' ? '16:9' : '1:1',
+        safetyFilterLevel: "block_some",
+        personGeneration: "allow_all",
       }
     };
 
-    console.log('[GEMINI IMAGE GEN] Calling Gemini 2.0 Flash for image generation...');
-    console.log('[GEMINI IMAGE GEN] Format:', format, 'Model: gemini-2.0-flash-exp');
+    console.log('[IMAGEN] Calling Vertex AI Imagen API...');
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -41,47 +50,45 @@ export async function generateEventImage({ prompt, format = 'poster' }: { prompt
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[GEMINI IMAGE GEN] API Error:', errorText);
-      console.error('[GEMINI IMAGE GEN] Response status:', response.status);
+      console.error('[IMAGEN] API Error:', errorText);
+      console.error('[IMAGEN] Response status:', response.status);
       return null;
     }
 
     const data = await response.json();
-    console.log('[GEMINI IMAGE GEN] Response received:', Object.keys(data));
+    console.log('[IMAGEN] Response received:', Object.keys(data));
     
-    // Extract image from Gemini 2.0 Flash response
-    // Response format: { candidates: [{ content: { parts: [{ inlineData: { mimeType, data } }] } }] }
-    if (data.candidates && data.candidates.length > 0) {
-      const candidate = data.candidates[0];
-      if (candidate.content && candidate.content.parts) {
-        for (const part of candidate.content.parts) {
-          // Check for inline image data
-          if (part.inlineData) {
-            const mimeType = part.inlineData.mimeType || 'image/png';
-            const imageData = part.inlineData.data;
-            if (imageData) {
-              console.log('[GEMINI IMAGE GEN] Found inline image data');
-              return `data:${mimeType};base64,${imageData}`;
-            }
-          }
-          // Check for image URL
-          if (part.url) {
-            console.log('[GEMINI IMAGE GEN] Found image URL');
-            return part.url;
-          }
-        }
+    // Extract image from response
+    // Response format: { predictions: [{ bytesBase64Encoded: "..." }] }
+    if (data.predictions && data.predictions.length > 0) {
+      const prediction = data.predictions[0];
+      
+      // Check for base64 encoded image
+      if (prediction.bytesBase64Encoded) {
+        console.log('[IMAGEN] Found base64 image');
+        return `data:image/png;base64,${prediction.bytesBase64Encoded}`;
+      }
+      
+      // Alternative: Check for image URL
+      if (prediction.imageUrl) {
+        console.log('[IMAGEN] Found image URL');
+        return prediction.imageUrl;
       }
     }
 
-    console.warn('[GEMINI IMAGE GEN] Unexpected response format:', JSON.stringify(data).substring(0, 500));
+    console.warn('[IMAGEN] Unexpected response format:', JSON.stringify(data).substring(0, 500));
     return null;
+    
   } catch (error: any) {
-    console.error('[GEMINI IMAGE GEN] Error generating event image:', error);
+    console.error('[IMAGEN] Error generating event image:', error);
+    if (error?.response) {
+      console.error('[IMAGEN] API Error Response:', error.response);
+    }
     if (error?.message) {
-      console.error('[GEMINI IMAGE GEN] Error Message:', error.message);
+      console.error('[IMAGEN] Error Message:', error.message);
     }
     if (error?.stack) {
-      console.error('[GEMINI IMAGE GEN] Error Stack:', error.stack.substring(0, 500));
+      console.error('[IMAGEN] Error Stack:', error.stack.substring(0, 500));
     }
     return null;
   }

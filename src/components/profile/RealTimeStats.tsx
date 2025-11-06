@@ -33,10 +33,14 @@ export function RealTimeStats({ className = '' }: RealTimeStatsProps) {
     const userUnsubscribe = onSnapshot(userDocRef, (doc) => {
       if (doc.exists()) {
         const userData = doc.data() as UserProfile;
+        const badgesCount = Array.isArray(userData.badges) 
+          ? userData.badges.length 
+          : (userData.badgesCount || 0);
         setStats(prev => ({
           ...prev,
           points: userData.points || 0,
           eventsAttended: userData.eventsAttended?.length || 0,
+          badgesEarned: badgesCount,
         }));
       }
     });
@@ -116,8 +120,8 @@ export function RealTimeStats({ className = '' }: RealTimeStatsProps) {
         <p className="text-2xl font-bold">{stats.badgesEarned}</p>
         <p className="text-sm text-muted-foreground">Badges Earned</p>
         <div className="flex items-center justify-center mt-1">
-          <Star className="h-3 w-3 text-yellow-500 mr-1" />
-          <span className="text-xs text-yellow-600">Coming Soon</span>
+          <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+          <span className="text-xs text-green-600">Live</span>
         </div>
       </Card>
     </div>

@@ -34,17 +34,29 @@ export default function LeaderboardPage() {
 
     const setupLeaderboard = async () => {
       try {
+        // Calculate current user's rank from real-time leaderboard data
+        const calculateUserRank = (leaderboardData: LeaderboardEntry[]) => {
+          if (currentUserId) {
+            const userIndex = leaderboardData.findIndex(entry => entry.volunteerId === currentUserId);
+            if (userIndex !== -1) {
+              setUserRank(userIndex + 1);
+            } else {
+              // If user not in top 50, try to get rank from API
+              getCurrentUserRank(currentUserId).then(rank => {
+                if (rank) setUserRank(rank);
+              }).catch(() => {
+                setUserRank(null);
+              });
+            }
+          }
+        };
+
         // Set up real-time volunteer leaderboard listener
         unsubscribeVol = await getRealTimeLeaderboard((data) => {
           setLeaderboard(data);
           setLoading(false);
+          calculateUserRank(data);
         });
-
-        // Get current user's rank if logged in
-        if (currentUserId) {
-          const rank = await getCurrentUserRank(currentUserId);
-          setUserRank(rank);
-        }
 
         // Set up NGO leaderboard listener
         unsubscribeNgo = await getRealTimeNgoLeaderboard((data) => {
@@ -93,6 +105,7 @@ export default function LeaderboardPage() {
             email: entry.email || '',
             fullName: entry.name,
             points: entry.points,
+            uid: entry.volunteerId,
             volunteerId: entry.volunteerId,
           },
         }),

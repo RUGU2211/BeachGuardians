@@ -154,6 +154,28 @@ export interface EventSortOptions {
   direction: 'asc' | 'desc';
 }
 
+// Volunteer verification for waste logging (not registration)
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface VolunteerVerification {
+  id: string;
+  volunteerId: string; // User UID
+  eventId: string;
+  wasteLogId?: string; // Optional: link to waste log if created during waste logging
+  driveLink: string; // Google Drive link to photos/videos of waste collection
+  status: VerificationStatus;
+  uploadedAt: string; // ISO string
+  approvedAt?: string; // ISO string - when admin approved
+  rejectedAt?: string; // ISO string - when admin rejected
+  approvedBy?: string; // Admin UID who approved/rejected
+  rejectionReason?: string; // Optional reason for rejection
+  location?: {
+    latitude: number;
+    longitude: number;
+    timestamp: string; // ISO string
+  }; // GPS coordinates at upload time
+}
+
 // This interface is redundant with UserProfile and can be removed
 // to avoid confusion. If specific volunteer fields are needed,
 // they should be added to UserProfile or a separate, non-overlapping interface.

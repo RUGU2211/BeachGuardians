@@ -135,7 +135,7 @@ export async function generateEventImage(input: GenerateEventImageInput): Promis
       return { imageDataUri: imageUrl };
     } else {
       // Log why generation failed
-      console.warn('[POSTER GENERATION] Image generation returned null. Check if Gemini API key is configured and Imagen API is enabled.');
+      console.warn('[POSTER GENERATION] Image generation returned null. Check if Vertex AI credentials are configured and Imagen API is enabled.');
       // Return a placeholder image if generation fails or API key is not available
       const placeholderUrl = "https://placehold.co/800x1000/4ade80/ffffff?text=Beach+Cleanup+Poster";
       return { imageDataUri: input.format === 'banner' ? 'https://placehold.co/1200x675/4ade80/ffffff?text=Beach+Cleanup+Banner' : placeholderUrl };

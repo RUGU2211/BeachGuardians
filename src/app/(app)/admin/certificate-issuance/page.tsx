@@ -65,6 +65,7 @@ export default function CertificateIssuancePage() {
           fullName: user.fullName,
           email: user.email,
           points: user.points,
+          uid: user.uid,
         } }),
       });
 
