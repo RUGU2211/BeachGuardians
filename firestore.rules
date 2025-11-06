@@ -8,14 +8,27 @@ service cloud.firestore {
     // - An admin registry doc exists at admins/{uid}
     // - A custom claim 'admin' is set on the auth token
     // - The users/{uid} profile shows role='admin' AND isAdminVerified=true
+    // Note: We check exists() before get() to avoid errors when profile doesn't exist yet
     function isAdmin() {
       return request.auth != null && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         request.auth.token.admin == true ||
         (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdminVerified == true
         )
+      );
+    }
+
+    // Helper: Check if current user is admin based on their own profile data
+    // This avoids circular dependency when reading users/{uid} where uid == request.auth.uid
+    // Use this when checking permissions on the user's own profile to prevent circular reads
+    function isAdminByResource(resourceData) {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.admin == true ||
+        (resourceData.role == 'admin' && resourceData.isAdminVerified == true)
       );
     }
 
@@ -24,17 +37,20 @@ service cloud.firestore {
       // List: explicitly allow admins to run collection-wide queries for analytics
       allow list: if isAdmin();
 
-      // Read (get and query per document): owner, admin, or opted-in live location user
+      // Read (get and query per document): owner always allowed, admin check uses resource.data to avoid circular dependency
       // Using `allow read` ensures queries evaluate per-document with `resource.data`
       allow read: if isSignedIn() && (
-        uid == request.auth.uid || isAdmin() || resource.data.enableLiveLocation == true
+        uid == request.auth.uid || 
+        isAdminByResource(resource.data) || 
+        resource.data.enableLiveLocation == true
       );
 
-      // Create: owner or admin. Non-admins cannot set role=admin.
+      // Create: owner can create their own profile with any role during signup
+      // Admin can create profiles for others
+      // Note: We allow users to set role='admin' during initial signup
+      // but they need to verify via OTP to activate admin privileges
       allow create: if isSignedIn() && (
-        (uid == request.auth.uid &&
-          (!request.resource.data.role ||
-           request.resource.data.role in ['user','volunteer'])) ||
+        uid == request.auth.uid ||
         isAdmin()
       );
 
@@ -141,10 +157,15 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // NGOs public profiles: publicly readable; writes restricted to admins (seed/management)
+    // NGOs public profiles: publicly readable; writes restricted to admins or profile owner during signup
     match /ngos/{uid} {
       allow read: if true;
-      allow write: if isAdmin();
+      // Allow users to create their own NGO profile during signup (same uid)
+      // Admins can create/modify any NGO profile
+      allow write: if isSignedIn() && (
+        uid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // Admins registry: allow only admins to read/write

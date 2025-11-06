@@ -26,12 +26,24 @@ export async function POST(req: Request) {
     if (data.isAdminVerified === true) patch.isAdminVerified = true;
     patch.updatedAt = new Date().toISOString();
 
+    // Ensure we have at least one field to update
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ success: false, reason: 'no_fields_to_sync' }, { status: 200 });
+    }
+
     // Write to Firestore users doc (admin if available, else client)
+    // Using merge: true ensures we don't overwrite existing fields
     try {
       const adminDb = getAdminDb();
       await adminDb.collection('users').doc(uid).set(patch, { merge: true });
     } catch (err) {
-      await clientSetDoc(clientDoc(clientDb, 'users', uid), patch, { merge: true });
+      // Fallback to client SDK if admin SDK fails (e.g., in development)
+      try {
+        await clientSetDoc(clientDoc(clientDb, 'users', uid), patch, { merge: true });
+      } catch (clientErr) {
+        console.error('Failed to sync to Firestore with both admin and client SDKs:', clientErr);
+        return NextResponse.json({ error: 'sync_failed', details: 'Cannot write to Firestore' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ success: true, patched: Object.keys(patch) });

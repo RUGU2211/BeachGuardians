@@ -35,16 +35,25 @@ export async function POST(req: Request) {
     }
 
     // Get user profile to check role (handle development mode)
+    // First try Firestore, then RTDB as fallback
     let isAdmin = false;
     try {
       const adminDb = getAdminDb();
       const userDoc = await adminDb.collection('users').doc(uid).get();
-      const userProfile = userDoc.data();
-      isAdmin = userProfile?.role === 'admin';
+      if (userDoc.exists) {
+        const userProfile = userDoc.data();
+        isAdmin = userProfile?.role === 'admin';
+      } else {
+        // Profile doesn't exist in Firestore, check RTDB for role (userData already fetched above)
+        isAdmin = userData?.role === 'admin';
+      }
     } catch (error) {
-      // In development mode without credentials, assume admin verification
-      console.log('[MOCK] Assuming admin verification in development mode');
-      isAdmin = true;
+      // Fallback: check RTDB data we already have (userData is available from line 16)
+      isAdmin = userData?.role === 'admin' || false;
+      // In development mode without credentials, logging is handled by getAdminDb
+      if (isAdmin) {
+        console.log('[MOCK] Using RTDB role for admin verification');
+      }
     }
 
     // OTP is valid, update user verification status

@@ -1,0 +1,60 @@
+{
+  "rules": {
+    "users": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+        ".write": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+        ".validate": "auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true"
+      }
+    },
+    "events": {
+      "$eventId": {
+        ".read": "true",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+        "registrations": {
+          "$regUserId": {
+            ".read": "auth != null && (auth.uid === $regUserId || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+            ".write": "auth != null && (auth.uid === $regUserId || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)"
+          }
+        }
+      }
+    },
+    "wasteLogs": {
+      "$logId": {
+        ".read": "auth != null && (data.child('userId').val() === auth.uid || data.child('loggedBy').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+        ".write": "auth != null && ((data.child('userId').val() === auth.uid || data.child('loggedBy').val() === auth.uid) || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)"
+      }
+    },
+    "certificates": {
+      "$certId": {
+        ".read": "auth != null && (data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)"
+      }
+    },
+    "leaderboard": {
+      "$userId": {
+        ".read": "true",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)"
+      }
+    },
+    "ngos": {
+      "$ngoId": {
+        ".read": "true",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true)"
+      }
+    },
+    "newsletter_subscribers": {
+      "$subscriberId": {
+        ".read": "true",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('isAdminVerified').val() === true || (newData.hasChildren(['email', 'createdAt']) && newData.child('email').isString() && newData.child('email').val().matches(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$/)))"
+      }
+    },
+    "volunteer_otp_verification": {
+      "$emailKey": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
+
