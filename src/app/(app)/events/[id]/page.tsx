@@ -10,6 +10,7 @@ import {
   leaveEvent,
   getEventRegistrations,
   getUsersByIds,
+  db,
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import { getEventRegistrationConfirmationTemplate } from '@/lib/email-templates'
 import { sendEmailFromClient } from '@/lib/client-email';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAuth } from 'firebase/auth';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 function VolunteerList({ volunteers }: { volunteers: UserProfile[] }) {
   if (volunteers.length === 0) {
@@ -64,6 +66,7 @@ export default function EventDetailPage() {
   const [checkedInVolunteers, setCheckedInVolunteers] = useState<UserProfile[]>([]);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [volunteerCount, setVolunteerCount] = useState(0);
 
   const isEventCreator = userProfile?.uid === currentEvent?.organizerId;
   const isAdmin = userProfile?.role === 'admin';
@@ -76,6 +79,10 @@ export default function EventDetailPage() {
       setCurrentEvent(eventData);
 
       if (eventData) {
+        // Set initial volunteer count from event data
+        // The real-time listener will update this automatically
+        setVolunteerCount(eventData.volunteers?.length || 0);
+
         const canViewVolunteers = (userProfile?.role === 'admin') || (userProfile?.uid === eventData.organizerId);
         // For admins/organizers, fetch registrations from subcollection and resolve profiles
         if (canViewVolunteers) {
@@ -83,6 +90,8 @@ export default function EventDetailPage() {
             const regUids = await getEventRegistrations(eventId);
             const regProfiles = await getUsersByIds(regUids);
             setRegisteredVolunteers(regProfiles);
+            // Update volunteer count with actual registrations count
+            setVolunteerCount(regUids.length);
           } catch (e) {
             console.error('Failed to fetch registrations:', e);
             setRegisteredVolunteers([]);
@@ -124,6 +133,29 @@ export default function EventDetailPage() {
       fetchEventData();
     }
   }, [eventId, fetchEventData]);
+
+  // Real-time listener for event registrations (volunteer count)
+  useEffect(() => {
+    if (!eventId) return;
+
+    // Listen to registrations subcollection to get accurate volunteer count in real-time
+    const registrationsRef = collection(db, 'events', eventId, 'registrations');
+    const unsubscribe = onSnapshot(
+      registrationsRef,
+      (snapshot) => {
+        // Count actual registrations (this includes all volunteers, not just admins)
+        const count = snapshot.size;
+        setVolunteerCount(count);
+      },
+      (error) => {
+        // If we can't read registrations (permission denied), fall back to event.volunteers
+        console.warn(`Cannot read registrations for event ${eventId}, using event.volunteers:`, error);
+        setVolunteerCount(currentEvent?.volunteers?.length || 0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [eventId, currentEvent?.volunteers]);
 
   const handleLeave = async () => {
     if (!userProfile || !currentEvent) return;
@@ -305,7 +337,7 @@ export default function EventDetailPage() {
             />
             <div className="flex items-center">
               <Users className="mr-3 h-5 w-5 text-primary" />
-              <span>{(canManageEvent ? registeredVolunteers.length : currentEvent.volunteers.length)} registered</span>
+              <span>{volunteerCount > 0 ? volunteerCount : (canManageEvent ? registeredVolunteers.length : currentEvent.volunteers.length)} volunteers registered</span>
             </div>
             {currentEvent.status === 'completed' && currentEvent.wasteCollectedKg && (
               <div className="flex items-center">
@@ -319,26 +351,42 @@ export default function EventDetailPage() {
             {currentEvent.description}
           </CardDescription>
 
-          {/* Supporting Document Section */}
+          {/* Supporting Document Section - Visible to all users before registration */}
           {currentEvent.supportingDocumentUrl && (
             <div className="mt-4 p-4 border rounded-lg bg-muted/50">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center space-x-3">
                   <FileText className="h-6 w-6 text-primary" />
                   <div>
                     <p className="font-medium">Supporting Document</p>
-                    <p className="text-sm text-muted-foreground">Government permission document</p>
+                    <p className="text-sm text-muted-foreground">Government permission document - View before registering</p>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    window.open(currentEvent.supportingDocumentUrl!, '_blank');
-                  }}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download PDF
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      window.open(currentEvent.supportingDocumentUrl!, '_blank');
+                    }}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = currentEvent.supportingDocumentUrl!;
+                      link.download = `event-${currentEvent.id}-document.pdf`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download
+                  </Button>
+                </div>
               </div>
             </div>
           )}
