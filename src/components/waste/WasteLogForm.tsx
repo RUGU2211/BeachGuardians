@@ -20,6 +20,7 @@ const wasteLogFormSchema = z.object({
   wasteType: z.string().min(1, { message: 'Please select a waste type.' }),
   otherWasteType: z.string().optional(),
   weightKg: z.coerce.number().min(0.1, { message: 'Weight must be at least 0.1 kg.' }),
+  adminName: z.string().min(2, { message: 'Admin name must be at least 2 characters.' }).optional(),
 }).refine(data => {
   if (data.wasteType === 'Other' && (!data.otherWasteType || data.otherWasteType.trim() === '')) {
     return false;
@@ -60,6 +61,7 @@ export function WasteLogForm() {
       wasteType: '',
       otherWasteType: '',
       weightKg: 0.1,
+      adminName: '',
     },
     mode: 'onChange',
   });
@@ -107,6 +109,7 @@ export function WasteLogForm() {
         type: finalWasteType,
         weightKg: data.weightKg,
         loggedBy: userProfile.uid,
+        adminName: data.adminName || undefined,
       });
 
       const pointsToAward = Math.round(data.weightKg * 10);
@@ -207,6 +210,21 @@ export function WasteLogForm() {
                 <Input type="number" placeholder="e.g., 2.5" {...field} step="0.1" />
               </FormControl>
               <FormDescription>Enter the approximate weight of the collected waste in kilograms.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="adminName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Admin Name</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g., John Doe" {...field} />
+              </FormControl>
+              <FormDescription>Name of the admin present during waste weighing (optional).</FormDescription>
               <FormMessage />
             </FormItem>
           )}

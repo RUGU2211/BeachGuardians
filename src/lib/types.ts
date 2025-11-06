@@ -66,6 +66,7 @@ export interface Event {
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   wasteCollectedKg?: number;
   checkedInVolunteers?: Record<string, { checkInTime: string }>; // Maps UID to check-in time
+  supportingDocumentUrl?: string; // URL to government permission PDF document
   
   // Enhanced location fields
   locationDetails?: {
@@ -113,6 +114,7 @@ export interface WasteLog {
   userId?: string; // Duplicate of loggedBy for rules-compliant queries
   eventId: string;
   date: string; // ISO string
+  adminName?: string; // Name of the admin present during waste weighing
 }
 
 // Represents an achievement or badge a user can earn.

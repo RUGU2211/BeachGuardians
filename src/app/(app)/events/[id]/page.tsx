@@ -13,7 +13,7 @@ import {
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarDays, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2, UserCheck } from 'lucide-react';
+import { CalendarDays, Users, Award, ChevronLeft, CheckCircle, XCircle, Clock, Loader2, UserCheck, FileText, Download } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -318,6 +318,30 @@ export default function EventDetailPage() {
           <CardDescription className="text-base leading-relaxed whitespace-pre-line">
             {currentEvent.description}
           </CardDescription>
+
+          {/* Supporting Document Section */}
+          {currentEvent.supportingDocumentUrl && (
+            <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <FileText className="h-6 w-6 text-primary" />
+                  <div>
+                    <p className="font-medium">Supporting Document</p>
+                    <p className="text-sm text-muted-foreground">Government permission document</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    window.open(currentEvent.supportingDocumentUrl!, '_blank');
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="space-x-2 mt-4">
             {(currentEvent.status === 'upcoming' || currentEvent.status === 'ongoing') && !isRegistered && (

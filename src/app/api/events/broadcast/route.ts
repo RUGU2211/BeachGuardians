@@ -75,11 +75,10 @@ export async function POST(req: Request) {
 
     const template = getNewEventNotificationTemplate(eventName, eventDateStr, eventLocation);
     const html = `${template.html}
-      <p style="margin-top:16px;">
-        <a href="${dashboardUrl}" style="background:#0ea5e9;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Open Dashboard</a>
-        <span style="margin:0 8px;"></span>
-        <a href="${eventUrl}" style="text-decoration:underline;">View Event Details</a>
-      </p>
+      <div style="margin-top:24px;text-align:center;">
+        <a href="${eventUrl}" style="background:#56A3D1;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:bold;margin:0 8px;">View Event</a>
+        <a href="${dashboardUrl}" style="background:#F0F8FF;color:#56A3D1;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:bold;margin:0 8px;border:1px solid #56A3D1;">Open Dashboard</a>
+      </div>
     `;
 
     const results = await Promise.allSettled(

@@ -24,6 +24,8 @@ import { LocationPicker } from './LocationPicker';
 import type { EventLocationDetails } from '@/lib/event-location-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { searchIndianLocations, type IndianLocationDetails } from '@/lib/indian-location-service';
+import { getAuth } from 'firebase/auth';
+import { FileText, Upload, X } from 'lucide-react';
 
 const eventFormSchema = z.object({
   name: z.string().min(3, { message: 'Event name must be at least 3 characters.' }),
@@ -67,12 +69,83 @@ export function EventForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [locationDetails, setLocationDetails] = React.useState<EventLocationDetails | undefined>();
+  const [supportingDocument, setSupportingDocument] = React.useState<File | null>(null);
+  const [supportingDocumentUrl, setSupportingDocumentUrl] = React.useState<string | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = React.useState(false);
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventFormSchema),
     defaultValues,
     mode: 'onChange',
   });
+
+  const handleDocumentUpload = async (file: File) => {
+    if (file.type !== 'application/pdf') {
+      toast({
+        title: 'Invalid File Type',
+        description: 'Please upload a PDF file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'File size must be less than 10MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsUploadingDocument(true);
+    try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const token = await user.getIdToken();
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/events/upload-document', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to upload document');
+      }
+
+      const result = await response.json();
+      setSupportingDocumentUrl(result.url);
+      setSupportingDocument(file);
+      toast({
+        title: 'Document Uploaded',
+        description: 'Supporting document has been uploaded successfully.',
+      });
+    } catch (error: any) {
+      console.error('Document upload failed:', error);
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload document. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
+
+  const handleDocumentRemove = () => {
+    setSupportingDocument(null);
+    setSupportingDocumentUrl(null);
+  };
 
   async function onSubmit(data: EventFormValues) {
     setIsSubmitting(true);
@@ -157,6 +230,7 @@ export function EventForm() {
       mapImageUrl: (await import('@/lib/event-images')).getRandomEventImage(),
       status: 'upcoming' as const,
       wasteCollectedKg: 0,
+      supportingDocumentUrl: supportingDocumentUrl || undefined,
     };
 
     try {
@@ -406,7 +480,54 @@ export function EventForm() {
           )}
         />
 
-        <Button type="submit" size="lg" disabled={isSubmitting}>
+        <div className="space-y-4">
+          <FormLabel>Supporting Document (Optional)</FormLabel>
+          <FormDescription>
+            Upload government permission document (PDF only, max 10MB). This document will be visible to volunteers.
+          </FormDescription>
+          
+          {supportingDocumentUrl ? (
+            <div className="flex items-center space-x-4 p-4 border rounded-lg bg-muted/50">
+              <FileText className="h-8 w-8 text-primary" />
+              <div className="flex-1">
+                <p className="font-medium">{supportingDocument?.name || 'Document'}</p>
+                <p className="text-sm text-muted-foreground">Document uploaded successfully</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleDocumentRemove}
+                disabled={isUploadingDocument}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    handleDocumentUpload(file);
+                  }
+                }}
+                disabled={isUploadingDocument}
+                className="cursor-pointer"
+              />
+              {isUploadingDocument && (
+                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Uploading document...</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <Button type="submit" size="lg" disabled={isSubmitting || isUploadingDocument}>
           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {isSubmitting ? 'Creating Event...' : 'Create Event'}
         </Button>

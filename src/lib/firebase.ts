@@ -594,6 +594,7 @@ export async function logWasteForEvent(eventId: string, wasteData: Omit<WasteLog
       loggedBy: user.uid,
       userId: user.uid,
       date: new Date().toISOString(),
+      adminName: wasteData.adminName || undefined,
     };
     const wasteLogRef = await addDoc(collection(db, 'wasteLogs'), wasteLog);
     await updateDoc(wasteLogRef, { id: wasteLogRef.id });
