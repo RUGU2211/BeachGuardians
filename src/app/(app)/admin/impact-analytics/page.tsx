@@ -4,12 +4,18 @@ import ProtectedRoute from '@/components/layout/ProtectedRoute';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Map, Download, Loader2, Users, Trash2, Calendar, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import type { Event, UserProfile, WasteLog } from '@/lib/types';
+import { parseISO, format } from 'date-fns';
+
+interface TopVolunteer extends UserProfile {
+  totalWasteContributed?: number;
+  eventsCount?: number;
+}
 
 interface AnalyticsData {
   totalEvents: number;
@@ -19,7 +25,7 @@ interface AnalyticsData {
   upcomingEvents: number;
   completedEvents: number;
   wasteByMonth: { month: string; amount: number }[];
-  topVolunteers: UserProfile[];
+  topVolunteers: TopVolunteer[];
 }
 
 export default function ImpactAnalyticsPage() {
@@ -28,69 +34,183 @@ export default function ImpactAnalyticsPage() {
   const { toast } = useToast();
   const { userProfile, loading: authLoading } = useAuth();
 
+  // Use refs to store data that all listeners can access
+  const eventsRef = useRef<Event[]>([]);
+  const usersRef = useRef<UserProfile[]>([]);
+  const wasteLogsRef = useRef<WasteLog[]>([]);
+
   useEffect(() => {
-    // Only fetch analytics for verified admin users
+    let eventsUnsubscribe: (() => void) | null = null;
+    let usersUnsubscribe: (() => void) | null = null;
+    let wasteLogsUnsubscribe: (() => void) | null = null;
+
+    // Only setup real-time listeners for verified admin users
     if (!authLoading && userProfile?.role === 'admin' && userProfile?.isAdminVerified) {
-      fetchAnalyticsData();
+      // Real-time listener for events
+      eventsUnsubscribe = onSnapshot(
+        collection(db, 'events'),
+        (snapshot) => {
+          eventsRef.current = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Event[];
+          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current);
+        },
+        (error) => {
+          console.error('Error listening to events:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to load events data.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+        }
+      );
+
+      // Real-time listener for users
+      usersUnsubscribe = onSnapshot(
+        collection(db, 'users'),
+        (snapshot) => {
+          usersRef.current = snapshot.docs.map(doc => ({
+            uid: doc.id,
+            ...doc.data(),
+          })) as UserProfile[];
+          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current);
+        },
+        (error) => {
+          console.error('Error listening to users:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to load users data.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+        }
+      );
+
+      // Real-time listener for waste logs
+      wasteLogsUnsubscribe = onSnapshot(
+        collection(db, 'wasteLogs'),
+        (snapshot) => {
+          wasteLogsRef.current = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as WasteLog[];
+          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current);
+        },
+        (error) => {
+          console.error('Error listening to waste logs:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to load waste logs data.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+        }
+      );
     } else if (!authLoading) {
       // Stop loading state if user is not permitted, ProtectedRoute will render the guard
       setLoading(false);
     }
+
+    // Cleanup listeners on unmount
+    return () => {
+      if (eventsUnsubscribe) eventsUnsubscribe();
+      if (usersUnsubscribe) usersUnsubscribe();
+      if (wasteLogsUnsubscribe) wasteLogsUnsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, userProfile?.role, userProfile?.isAdminVerified]);
 
-  const fetchAnalyticsData = async () => {
+  const calculateAndUpdateAnalytics = (events: Event[], users: UserProfile[], wasteLogs: WasteLog[]) => {
     try {
-      // Fetch events
-      const eventsRef = collection(db, 'events');
-      const eventsSnapshot = await getDocs(eventsRef);
-      const events = eventsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Event[];
-
-      // Fetch users
-      const usersRef = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-      const users = usersSnapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data(),
-      })) as UserProfile[];
-
-      // Fetch waste logs
-      const wasteRef = collection(db, 'wasteLogs');
-      const wasteSnapshot = await getDocs(wasteRef);
-      const wasteLogs = wasteSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as WasteLog[];
-
-      // Calculate analytics
       const now = new Date();
+      
+      // Calculate basic metrics
       const totalEvents = events.length;
-      const totalVolunteers = users.filter(u => u.role === 'volunteer').length;
-      const totalWasteCollected = wasteLogs.reduce((sum, log) => sum + log.weightKg, 0);
-      const activeVolunteers = users.filter(u => u.role === 'volunteer' && u.eventsAttended && u.eventsAttended.length > 0).length;
-      const upcomingEvents = events.filter(e => new Date(e.date) > now).length;
-      const completedEvents = events.filter(e => new Date(e.date) < now).length;
+      const volunteers = users.filter(u => u.role === 'volunteer');
+      const totalVolunteers = volunteers.length;
+      const totalWasteCollected = wasteLogs.reduce((sum, log) => sum + (log.weightKg || 0), 0);
+      const activeVolunteers = volunteers.filter(u => u.eventsAttended && u.eventsAttended.length > 0).length;
+      
+      // Calculate event status
+      const upcomingEvents = events.filter(e => {
+        const eventDate = e.date ? (typeof e.date === 'string' ? parseISO(e.date) : new Date(e.date)) : null;
+        return eventDate && eventDate > now;
+      }).length;
+      
+      const completedEvents = events.filter(e => {
+        const eventDate = e.date ? (typeof e.date === 'string' ? parseISO(e.date) : new Date(e.date)) : null;
+        return eventDate && eventDate < now;
+      }).length;
 
-      // Calculate waste by month
-      const wasteByMonth = wasteLogs.reduce((acc, log) => {
-        const date = new Date(log.date);
-        const month = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        acc[month] = (acc[month] || 0) + log.weightKg;
-        return acc;
-      }, {} as Record<string, number>);
+      // Calculate waste by month with proper date handling
+      const wasteByMonth: Record<string, number> = {};
+      wasteLogs.forEach(log => {
+        if (!log.date || !log.weightKg) return;
+        
+        try {
+          let logDate: Date;
+          if (typeof log.date === 'string') {
+            logDate = parseISO(log.date);
+          } else if (log.date instanceof Date) {
+            logDate = log.date;
+          } else if (log.date && typeof (log.date as any).toDate === 'function') {
+            // Firestore Timestamp
+            logDate = (log.date as any).toDate();
+          } else {
+            logDate = new Date(log.date);
+          }
+          
+          if (isNaN(logDate.getTime())) return;
+          
+          const monthKey = format(logDate, 'MMM yyyy');
+          wasteByMonth[monthKey] = (wasteByMonth[monthKey] || 0) + (log.weightKg || 0);
+        } catch (dateError) {
+          console.warn('Error parsing date for waste log:', log.date, dateError);
+        }
+      });
 
+      // Convert to array and sort by date
       const wasteByMonthArray = Object.entries(wasteByMonth)
         .map(([month, amount]) => ({ month, amount }))
-        .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+        .sort((a, b) => {
+          try {
+            const dateA = new Date(a.month);
+            const dateB = new Date(b.month);
+            return dateA.getTime() - dateB.getTime();
+          } catch {
+            return 0;
+          }
+        });
 
-      // Get top volunteers
-      const topVolunteers = users
-        .filter(u => u.role === 'volunteer')
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 5);
+      // Get top volunteers sorted by points and contributions
+      // Calculate total waste contributed by each volunteer
+      const volunteerContributions = volunteers.map(volunteer => {
+        const volunteerWasteLogs = wasteLogs.filter(
+          log => log.userId === volunteer.uid || log.loggedBy === volunteer.uid
+        );
+        const totalWasteContributed = volunteerWasteLogs.reduce(
+          (sum, log) => sum + (log.weightKg || 0), 
+          0
+        );
+        const eventsCount = volunteer.eventsAttended?.length || 0;
+        
+        return {
+          ...volunteer,
+          totalWasteContributed,
+          eventsCount,
+          // Sort by points first, then by waste contributed
+          sortScore: (volunteer.points || 0) * 1000 + totalWasteContributed,
+        };
+      });
+
+      // Sort by combined score (points + contributions)
+      const topVolunteers = volunteerContributions
+        .filter(v => (v.points || 0) > 0 || v.totalWasteContributed > 0)
+        .sort((a, b) => b.sortScore - a.sortScore)
+        .slice(0, 5)
+        .map(({ sortScore, ...rest }) => rest); // Remove sortScore from output
 
       setAnalyticsData({
         totalEvents,
@@ -103,14 +223,14 @@ export default function ImpactAnalyticsPage() {
         topVolunteers,
       });
 
+      setLoading(false);
     } catch (error) {
-      console.error('Error fetching analytics data:', error);
+      console.error('Error calculating analytics:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load analytics data.',
+        description: 'Failed to calculate analytics data.',
         variant: 'destructive',
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -232,28 +352,38 @@ export default function ImpactAnalyticsPage() {
             <CardContent>
               {analyticsData?.wasteByMonth && analyticsData.wasteByMonth.length > 0 ? (
                 <div className="space-y-4">
-                  {analyticsData.wasteByMonth.map((item, index) => (
-                    <div key={item.month} className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{item.month}</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-32 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full" 
-                            style={{ 
-                              width: `${Math.min((item.amount / Math.max(...analyticsData.wasteByMonth.map(w => w.amount))) * 100, 100)}%` 
-                            }}
-                          />
+                  {analyticsData.wasteByMonth.map((item, index) => {
+                    const maxAmount = Math.max(...analyticsData.wasteByMonth.map(w => w.amount));
+                    const percentage = maxAmount > 0 ? (item.amount / maxAmount) * 100 : 0;
+                    return (
+                      <div key={`${item.month}-${index}`} className="flex items-center justify-between">
+                        <span className="text-sm font-medium w-24">{item.month}</span>
+                        <div className="flex items-center space-x-2 flex-1">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[200px]">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                              style={{ 
+                                width: `${Math.min(percentage, 100)}%` 
+                              }}
+                            />
+                          </div>
+                          <span className="text-sm font-semibold w-20 text-right">
+                            {item.amount.toFixed(1)} kg
+                          </span>
                         </div>
-                        <span className="text-sm text-muted-foreground w-16 text-right">
-                          {item.amount.toFixed(1)} kg
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="h-80 flex items-center justify-center bg-muted rounded-lg">
-                  <p className="text-muted-foreground">No waste data available yet</p>
+                  <div className="text-center">
+                    <Trash2 className="mx-auto h-12 w-12 mb-4 opacity-50 text-muted-foreground" />
+                    <p className="text-muted-foreground">No waste data available yet</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Waste data will appear here once volunteers start logging waste
+                    </p>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -307,13 +437,34 @@ export default function ImpactAnalyticsPage() {
             {analyticsData?.topVolunteers && analyticsData.topVolunteers.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {analyticsData.topVolunteers.map((volunteer, index) => (
-                  <div key={volunteer.uid} className="flex items-center space-x-3 p-3 bg-muted rounded-lg">
-                    <div className="flex-shrink-0 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{volunteer.fullName}</p>
-                      <p className="text-xs text-muted-foreground">{volunteer.points} points</p>
+                  <div key={volunteer.uid} className="p-4 bg-muted rounded-lg border border-border hover:border-primary/50 transition-colors">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{volunteer.fullName}</p>
+                        <div className="mt-2 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Points:</span>
+                            <span className="text-xs font-semibold text-primary">{volunteer.points || 0}</span>
+                          </div>
+                          {volunteer.totalWasteContributed !== undefined && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Waste:</span>
+                              <span className="text-xs font-semibold text-green-600">
+                                {volunteer.totalWasteContributed.toFixed(1)} kg
+                              </span>
+                            </div>
+                          )}
+                          {volunteer.eventsCount !== undefined && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Events:</span>
+                              <span className="text-xs font-semibold text-blue-600">{volunteer.eventsCount || 0}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -322,6 +473,9 @@ export default function ImpactAnalyticsPage() {
               <div className="text-center py-8 text-muted-foreground">
                 <Users className="mx-auto h-12 w-12 mb-4 opacity-50" />
                 <p>No volunteer data available yet</p>
+                <p className="text-xs mt-2">
+                  Volunteer rankings will appear here once volunteers start earning points
+                </p>
               </div>
             )}
           </CardContent>
