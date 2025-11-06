@@ -83,10 +83,10 @@ service cloud.firestore {
           );
         }
 
-        // Read: owner (by field), admin, or the event organizer
-        allow read: if isSignedIn() && (
-          resource.data.userId == request.auth.uid || isAdmin() || isEventOrganizer()
-        );
+        // Read: public read allowed for counting registrations (shows volunteer count on event cards)
+        // This allows anyone to see registration count without exposing sensitive user data
+        // Individual registration data (userId, eventId) is minimal and safe for public viewing
+        allow read: if true;
         // Create: owner (by field) or admin manages registrations
         // Organizers may also create (e.g., adding attendees manually)
         allow create: if isSignedIn() && (

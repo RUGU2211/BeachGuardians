@@ -6,11 +6,12 @@ import { CalendarDays, Users, Edit, Trash2, Clock, MapPin, Tag } from 'lucide-re
 import type { Event } from '@/lib/types';
 import { EventLocationBadge } from './EventLocation';
 import { useAuth } from '@/context/AuthContext';
-import { useState } from 'react';
-import { deleteEvent } from '@/lib/firebase';
+import { useState, useEffect } from 'react';
+import { deleteEvent, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { getEventStatus, getEventDuration } from '@/lib/event-filters';
+import { collection, onSnapshot } from 'firebase/firestore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ export function EventCard({ event, onEventDeleted, viewMode = 'grid' }: EventCar
   const { toast } = useToast();
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [volunteerCount, setVolunteerCount] = useState(event.volunteers?.length || 0);
   
   // Safely parse dates to avoid RangeError from invalid inputs
   const toValidDate = (value?: string) => {
@@ -51,6 +53,27 @@ export function EventCard({ event, onEventDeleted, viewMode = 'grid' }: EventCar
   const eventStatus = getEventStatus(event);
   const eventDuration = getEventDuration(event);
   const isAdmin = userProfile?.role === 'admin' && userProfile?.isAdminVerified;
+
+  // Real-time listener for event registrations
+  useEffect(() => {
+    // Listen to registrations subcollection to get accurate volunteer count
+    const registrationsRef = collection(db, 'events', event.id, 'registrations');
+    const unsubscribe = onSnapshot(
+      registrationsRef,
+      (snapshot) => {
+        // Count actual registrations (this includes all volunteers, not just admins)
+        const count = snapshot.size;
+        setVolunteerCount(count);
+      },
+      (error) => {
+        // If we can't read registrations (permission denied), fall back to event.volunteers
+        console.warn(`Cannot read registrations for event ${event.id}, using event.volunteers:`, error);
+        setVolunteerCount(event.volunteers?.length || 0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [event.id, event.volunteers]);
 
   const handleDeleteEvent = async () => {
     setIsDeleting(true);
@@ -163,7 +186,7 @@ export function EventCard({ event, onEventDeleted, viewMode = 'grid' }: EventCar
               </div>
               <div className="flex items-center">
                 <Users className="mr-2 h-4 w-4 text-primary" />
-                <span>{event.volunteers.length} volunteers</span>
+                <span>{volunteerCount} volunteers registered</span>
               </div>
             </div>
           </div>
@@ -271,7 +294,7 @@ export function EventCard({ event, onEventDeleted, viewMode = 'grid' }: EventCar
           />
           <div className="flex items-center">
             <Users className="mr-2 h-4 w-4 text-primary" />
-            <span>{event.volunteers.length} volunteers registered</span>
+            <span>{volunteerCount} volunteers registered</span>
           </div>
         </div>
       </CardContent>
