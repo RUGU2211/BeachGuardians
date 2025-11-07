@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import type { LeaderboardEntry, NgoLeaderboardEntry } from '@/lib/types';
-import { getTopUsers, getRealTimeNgoLeaderboard } from '@/lib/firebase';
+import { getRealTimeLeaderboard, getRealTimeNgoLeaderboard } from '@/lib/firebase';
 
 export default function LeaderboardHighlights() {
   const [topUsers, setTopUsers] = useState<LeaderboardEntry[]>([]);
@@ -9,23 +9,26 @@ export default function LeaderboardHighlights() {
 
   useEffect(() => {
     let mounted = true;
-    let unsubscribe: (() => void) | undefined;
+    let unsubscribeVol: (() => void) | undefined;
+    let unsubscribeNgo: (() => void) | undefined;
 
     (async () => {
-      // Top users (gracefully handle permissions)
+      // Real-time volunteer leaderboard
       try {
-        const users = await getTopUsers(5);
-        if (mounted) setTopUsers(users);
+        unsubscribeVol = await getRealTimeLeaderboard((leaderboard) => {
+          if (!mounted) return;
+          setTopUsers(leaderboard.slice(0, 5));
+        });
       } catch (err) {
-        console.error('Error getting top users:', err);
+        console.error('Error setting up volunteer leaderboard:', err);
         if (mounted) {
           setTopUsers([]);
         }
       }
 
-      // NGO leaderboard real-time (await unsubscribe; fallback on error)
+      // Real-time NGO leaderboard
       try {
-        unsubscribe = await getRealTimeNgoLeaderboard((ngos) => {
+        unsubscribeNgo = await getRealTimeNgoLeaderboard((ngos) => {
           if (!mounted) return;
           setTopNgos(ngos.slice(0, 5));
         });
@@ -37,7 +40,11 @@ export default function LeaderboardHighlights() {
       }
     })();
 
-    return () => { mounted = false; if (unsubscribe) unsubscribe(); };
+    return () => { 
+      mounted = false; 
+      if (unsubscribeVol) unsubscribeVol(); 
+      if (unsubscribeNgo) unsubscribeNgo(); 
+    };
   }, []);
 
   return (

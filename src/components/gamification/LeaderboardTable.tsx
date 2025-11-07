@@ -42,6 +42,7 @@ export function LeaderboardTable({ entries, currentUserVolId, startRank = 1 }: L
             email: entry.email || '',
             fullName: entry.name,
             points: entry.points,
+            uid: entry.volunteerId,
             volunteerId: entry.volunteerId,
           },
         }),

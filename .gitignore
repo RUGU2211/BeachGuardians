@@ -39,6 +39,8 @@ next-env.d.ts
 
 .genkit/*
 .env*
+service-account.json
+shoreline-*.json
 
 # firebase
 firebase-debug.log

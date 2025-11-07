@@ -159,7 +159,7 @@ export default function AIContentPage() {
       if (imageUrl && imageUrl.includes('placehold.co')) {
         toast({
           title: 'Poster Generation Unavailable',
-          description: 'Gemini API key not configured. Please configure GEMINI_API_KEY in your environment variables to generate posters.',
+          description: 'Vertex AI credentials not configured. Please configure GOOGLE_APPLICATION_CREDENTIALS in your environment variables to generate posters.',
           variant: 'destructive',
         });
       } else if (imageUrl) {
@@ -170,7 +170,7 @@ export default function AIContentPage() {
       } else {
         toast({
           title: 'Poster Generation Failed',
-          description: 'Failed to generate poster. Please check your Gemini API key configuration and ensure Imagen API is enabled.',
+          description: 'Failed to generate poster. Please check your Vertex AI credentials and ensure Imagen API is enabled in your Google Cloud project.',
           variant: 'destructive',
         });
       }

@@ -11,6 +11,9 @@ import {
   getEventRegistrations,
   getUsersByIds,
   db,
+  createVolunteerVerification,
+  getVolunteerVerification,
+  updateVerificationStatus,
 } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,12 +24,12 @@ import { Badge } from '@/components/ui/badge';
 import { EventLocation } from '@/components/events/EventLocation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { Event, UserProfile } from '@/lib/types';
-import { getEventRegistrationConfirmationTemplate } from '@/lib/email-templates';
+import type { Event, UserProfile, VolunteerVerification } from '@/lib/types';
+import { getEventRegistrationConfirmationTemplate, getVerificationApprovalTemplate } from '@/lib/email-templates';
 import { sendEmailFromClient } from '@/lib/client-email';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAuth } from 'firebase/auth';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc } from 'firebase/firestore';
 
 function VolunteerList({ volunteers }: { volunteers: UserProfile[] }) {
   if (volunteers.length === 0) {
@@ -50,6 +53,266 @@ function VolunteerList({ volunteers }: { volunteers: UserProfile[] }) {
   );
 }
 
+function VolunteerVerificationList({ 
+  volunteers, 
+  eventId, 
+  currentUserId,
+  showOnlyApproved = false
+}: { 
+  volunteers: UserProfile[]; 
+  eventId: string;
+  currentUserId: string;
+  showOnlyApproved?: boolean;
+}) {
+  const { toast } = useToast();
+  const [verifications, setVerifications] = useState<Map<string, VolunteerVerification>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (volunteers.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    // Fetch verification status for each volunteer
+    const fetchVerifications = async () => {
+      try {
+        const verificationMap = new Map<string, VolunteerVerification>();
+        await Promise.all(
+          volunteers.map(async (volunteer) => {
+            try {
+              const verification = await getVolunteerVerification(volunteer.uid, eventId);
+              if (verification) {
+                verificationMap.set(volunteer.uid, verification);
+              }
+            } catch (error) {
+              console.error(`Error fetching verification for ${volunteer.uid}:`, error);
+            }
+          })
+        );
+        setVerifications(verificationMap);
+      } catch (error) {
+        console.error('Error fetching verifications:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVerifications();
+
+    // Real-time listener for verification updates
+    const verificationsRef = collection(db, 'volunteerVerifications');
+    const q = query(
+      verificationsRef,
+      where('eventId', '==', eventId)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const verificationMap = new Map<string, VolunteerVerification>();
+        snapshot.forEach((doc) => {
+          const verification = { id: doc.id, ...doc.data() } as VolunteerVerification;
+          verificationMap.set(verification.volunteerId, verification);
+        });
+        setVerifications(verificationMap);
+      },
+      (error) => {
+        console.error('Error listening to verifications:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [volunteers, eventId]);
+
+  const handleApprove = async (volunteerId: string, volunteerName: string, volunteerEmail?: string) => {
+    const verification = verifications.get(volunteerId);
+    if (!verification) return;
+
+    setProcessing(verification.id);
+    try {
+      await updateVerificationStatus(verification.id, 'approved', currentUserId);
+      
+      // Send email notification
+      if (volunteerEmail) {
+        try {
+          const { subject, html } = getVerificationApprovalTemplate(
+            volunteerName,
+            'Event' // You might want to pass event name here
+          );
+          await sendEmailFromClient({
+            to: volunteerEmail,
+            subject,
+            html,
+          });
+        } catch (emailError) {
+          console.error('Failed to send approval email:', emailError);
+        }
+      }
+      
+      toast({
+        title: 'Verification Approved',
+        description: `${volunteerName} can now log waste for this event.`,
+      });
+    } catch (error) {
+      console.error('Error approving verification:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to approve verification. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleReject = async (volunteerId: string, volunteerName: string) => {
+    const verification = verifications.get(volunteerId);
+    if (!verification) return;
+
+    setProcessing(verification.id);
+    try {
+      await updateVerificationStatus(verification.id, 'rejected', currentUserId);
+      toast({
+        title: 'Verification Rejected',
+        description: `${volunteerName}'s verification has been rejected.`,
+      });
+    } catch (error) {
+      console.error('Error rejecting verification:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to reject verification. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  if (loading) {
+    return <p className="pt-4 text-center text-muted-foreground">Loading...</p>;
+  }
+
+  if (volunteers.length === 0) {
+    return <p className="pt-4 text-center text-muted-foreground">No volunteers registered yet.</p>;
+  }
+
+  // Filter volunteers based on showOnlyApproved flag
+  const filteredVolunteers = showOnlyApproved
+    ? volunteers.filter(volunteer => {
+        const verification = verifications.get(volunteer.uid);
+        return verification?.status === 'approved';
+      })
+    : volunteers;
+
+  if (showOnlyApproved && filteredVolunteers.length === 0) {
+    return <p className="pt-4 text-center text-muted-foreground">No approved volunteers checked in yet.</p>;
+  }
+
+  return (
+    <div className="pt-4 space-y-3">
+      {filteredVolunteers.map(volunteer => {
+        const verification = verifications.get(volunteer.uid);
+        const status = verification?.status || 'no-verification';
+        
+        return (
+          <div 
+            key={volunteer.uid} 
+            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center space-x-3 flex-1">
+              <Avatar>
+                <AvatarImage src={volunteer.photoURL || undefined} alt={volunteer.displayName} />
+                <AvatarFallback>{volunteer.displayName?.charAt(0).toUpperCase() || 'V'}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <p className="font-medium">{volunteer.displayName}</p>
+                <p className="text-sm text-muted-foreground">{volunteer.email}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                {status === 'no-verification' && (
+                  <Badge variant="outline">No Verification</Badge>
+                )}
+                {status === 'pending' && (
+                  <Badge variant="secondary" className="flex items-center space-x-1">
+                    <Clock className="h-3 w-3" />
+                    <span>Pending</span>
+                  </Badge>
+                )}
+                {status === 'approved' && (
+                  <Badge variant="default" className="flex items-center space-x-1">
+                    <CheckCircle className="h-3 w-3" />
+                    <span>Approved</span>
+                  </Badge>
+                )}
+                {status === 'rejected' && (
+                  <Badge variant="destructive" className="flex items-center space-x-1">
+                    <XCircle className="h-3 w-3" />
+                    <span>Rejected</span>
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 ml-4">
+              {verification?.driveLink && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(verification.driveLink, '_blank')}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  View Drive
+                </Button>
+              )}
+              {!showOnlyApproved && (
+                <>
+                  {status === 'pending' && verification ? (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => handleApprove(volunteer.uid, volunteer.displayName || 'Volunteer', volunteer.email)}
+                        disabled={processing === verification.id}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {processing === verification.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Approve
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleReject(volunteer.uid, volunteer.displayName || 'Volunteer')}
+                        disabled={processing === verification.id}
+                      >
+                        {processing === verification.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <XCircle className="mr-2 h-4 w-4" />
+                            Reject
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  ) : status === 'no-verification' ? (
+                    <span className="text-sm text-muted-foreground">No verification submitted</span>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -64,9 +327,11 @@ export default function EventDetailPage() {
   const [isLoadingEvent, setIsLoadingEvent] = useState(true);
   const [registeredVolunteers, setRegisteredVolunteers] = useState<UserProfile[]>([]);
   const [checkedInVolunteers, setCheckedInVolunteers] = useState<UserProfile[]>([]);
+  const [checkedInCount, setCheckedInCount] = useState(0);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [volunteerCount, setVolunteerCount] = useState(0);
+  const [verificationStatus, setVerificationStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
 
   const isEventCreator = userProfile?.uid === currentEvent?.organizerId;
   const isAdmin = userProfile?.role === 'admin';
@@ -100,11 +365,19 @@ export default function EventDetailPage() {
           setRegisteredVolunteers([]);
         }
 
-        if (canViewVolunteers && eventData.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
+        // Real-time listener for checked-in volunteers will update this
+        if (eventData.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
           const checkedInIds = Object.keys(eventData.checkedInVolunteers);
-          const checkedInProfiles = await getUsersByIds(checkedInIds);
-          setCheckedInVolunteers(checkedInProfiles);
+          setCheckedInCount(checkedInIds.length);
+          
+          if (canViewVolunteers) {
+            const checkedInProfiles = await getUsersByIds(checkedInIds);
+            setCheckedInVolunteers(checkedInProfiles);
+          } else {
+            setCheckedInVolunteers([]);
+          }
         } else {
+          setCheckedInCount(0);
           setCheckedInVolunteers([]);
         }
 
@@ -118,6 +391,10 @@ export default function EventDetailPage() {
             : false;
           setIsRegistered(!!(registeredByEventList || registeredByProfile));
           setHasCheckedIn(!!eventData.checkedInVolunteers?.[authUid]);
+          
+          // Check verification status for volunteers (for waste logging)
+          // Note: Verification is now for waste logs, not registration
+          // We'll check this when they try to log waste
         }
       }
     } catch (error) {
@@ -142,10 +419,22 @@ export default function EventDetailPage() {
     const registrationsRef = collection(db, 'events', eventId, 'registrations');
     const unsubscribe = onSnapshot(
       registrationsRef,
-      (snapshot) => {
+      async (snapshot) => {
         // Count actual registrations (this includes all volunteers, not just admins)
         const count = snapshot.size;
         setVolunteerCount(count);
+
+        // Update registered volunteers list in real-time
+        const canViewVolunteers = (userProfile?.role === 'admin') || (userProfile?.uid === currentEvent?.organizerId);
+        if (canViewVolunteers) {
+          try {
+            const regUids = snapshot.docs.map(doc => doc.id);
+            const regProfiles = await getUsersByIds(regUids);
+            setRegisteredVolunteers(regProfiles);
+          } catch (e) {
+            console.error('Failed to fetch registered volunteers:', e);
+          }
+        }
       },
       (error) => {
         // If we can't read registrations (permission denied), fall back to event.volunteers
@@ -155,7 +444,46 @@ export default function EventDetailPage() {
     );
 
     return () => unsubscribe();
-  }, [eventId, currentEvent?.volunteers]);
+  }, [eventId, currentEvent?.volunteers, currentEvent?.organizerId, userProfile?.role, userProfile?.uid]);
+
+  // Note: Verification status is now checked during waste logging, not registration
+
+  // Real-time listener for checked-in volunteers (works for all users to show count)
+  useEffect(() => {
+    if (!eventId || !currentEvent) return;
+
+    // Listen to event document for checkedInVolunteers changes
+    const eventRef = doc(db, 'events', eventId);
+    const unsubscribe = onSnapshot(
+      eventRef,
+      async (snapshot) => {
+        const eventData = snapshot.data() as Event;
+        const canViewVolunteers = (userProfile?.role === 'admin') || (userProfile?.uid === currentEvent.organizerId);
+        
+        if (eventData?.checkedInVolunteers && Object.keys(eventData.checkedInVolunteers).length > 0) {
+          const checkedInIds = Object.keys(eventData.checkedInVolunteers);
+          setCheckedInCount(checkedInIds.length);
+          
+          // Only fetch full profiles if user can view volunteers (admin/organizer)
+          if (canViewVolunteers) {
+            const checkedInProfiles = await getUsersByIds(checkedInIds);
+            setCheckedInVolunteers(checkedInProfiles);
+          } else {
+            // For volunteers, just update the count (they can't see the list)
+            setCheckedInVolunteers([]);
+          }
+        } else {
+          setCheckedInCount(0);
+          setCheckedInVolunteers([]);
+        }
+      },
+      (error) => {
+        console.warn('Error listening to checked-in volunteers:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [eventId, currentEvent?.organizerId, userProfile?.role, userProfile?.uid]);
 
   const handleLeave = async () => {
     if (!userProfile || !currentEvent) return;
@@ -219,12 +547,14 @@ export default function EventDetailPage() {
     }
   };
 
+
   const handleRegister = async () => {
     if (authLoading || !userProfile || !userProfile.email || !currentEvent) {
       toast({ title: "Cannot Register", description: "Please ensure you are logged in and event details are loaded.", variant: "destructive" });
       if (!userProfile) router.push('/login');
       return;
     }
+    
     if (isRegistering) return;
     
     try {
@@ -429,6 +759,7 @@ export default function EventDetailPage() {
             </div>
           )}
 
+
           <div className="space-x-2 mt-4">
             {(currentEvent.status === 'upcoming' || currentEvent.status === 'ongoing') && !isRegistered && (
               <Button size="lg" onClick={handleRegister} disabled={authLoading || isRegistering}>
@@ -458,18 +789,52 @@ export default function EventDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="registered">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="registered">Registered ({registeredVolunteers.length})</TabsTrigger>
-              <TabsTrigger value="checked-in">Checked-in ({checkedInVolunteers.length})</TabsTrigger>
-            </TabsList>
-            <TabsContent value="registered">
-              <VolunteerList volunteers={registeredVolunteers} />
-            </TabsContent>
-            <TabsContent value="checked-in">
-              <VolunteerList volunteers={checkedInVolunteers} />
-            </TabsContent>
-          </Tabs>
+          {canManageEvent ? (
+            // Admin view: Show counts and verification list
+            <Tabs defaultValue="registered">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="registered">
+                  Registered ({registeredVolunteers.length})
+                </TabsTrigger>
+                <TabsTrigger value="checked-in">
+                  Checked-in ({checkedInVolunteers.length})
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="registered">
+                <VolunteerVerificationList 
+                  volunteers={registeredVolunteers} 
+                  eventId={eventId}
+                  currentUserId={userProfile?.uid || ''}
+                  showOnlyApproved={false}
+                />
+              </TabsContent>
+              <TabsContent value="checked-in">
+                <VolunteerVerificationList 
+                  volunteers={checkedInVolunteers} 
+                  eventId={eventId}
+                  currentUserId={userProfile?.uid || ''}
+                  showOnlyApproved={true}
+                />
+              </TabsContent>
+            </Tabs>
+          ) : (
+            // Volunteer view: Show only registered count
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-4">
+                  <div className="px-4 py-2 bg-primary/10 rounded-lg">
+                    <span className="text-sm text-muted-foreground">Registered</span>
+                    <p className="text-2xl font-bold">{volunteerCount}</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-center text-muted-foreground">
+                {volunteerCount > 0 
+                  ? `${volunteerCount} volunteer${volunteerCount !== 1 ? 's' : ''} registered for this event.`
+                  : 'No volunteers registered yet.'}
+              </p>
+            </div>
+          )}
         </CardContent>
          {currentEvent.status === 'completed' && (
           <CardFooter>

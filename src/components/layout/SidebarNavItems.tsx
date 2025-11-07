@@ -4,7 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
+import { db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Calendar,
@@ -20,6 +24,7 @@ import {
   ClipboardList,
   Award,
   Map,
+  Camera,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -33,8 +38,33 @@ type NavItem = {
 export function SidebarNavItems() {
   const pathname = usePathname();
   const { userProfile, logout } = useAuth();
+  const [pendingVerificationsCount, setPendingVerificationsCount] = useState(0);
 
   const isAdmin = userProfile?.role === 'admin' && userProfile?.isAdminVerified === true;
+
+  // Real-time listener for pending verifications count
+  useEffect(() => {
+    if (!isAdmin) {
+      setPendingVerificationsCount(0);
+      return;
+    }
+
+    const verificationsRef = collection(db, 'volunteerVerifications');
+    const q = query(verificationsRef, where('status', '==', 'pending'));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setPendingVerificationsCount(snapshot.size);
+      },
+      (error) => {
+        console.error('Error listening to pending verifications:', error);
+        setPendingVerificationsCount(0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   const handleSignOut = async () => {
     try {
@@ -84,6 +114,13 @@ export function SidebarNavItems() {
 
   const adminNavItems: NavItem[] = [
     {
+      title: 'Volunteer Verifications',
+      href: '/admin/volunteer-verifications',
+      icon: Camera,
+      adminOnly: true,
+      badge: pendingVerificationsCount > 0 ? pendingVerificationsCount : undefined,
+    },
+    {
       title: 'AI Content',
       href: '/admin/ai-content',
       icon: Sparkles,
@@ -120,7 +157,12 @@ export function SidebarNavItems() {
           >
             <Icon className="mr-2 h-4 w-4" />
             <span>{item.title}</span>
-            {item.adminOnly && (
+            {item.badge !== undefined && item.badge > 0 && (
+              <Badge variant="destructive" className="ml-auto h-5 min-w-5 flex items-center justify-center px-1.5 text-xs">
+                {item.badge}
+              </Badge>
+            )}
+            {item.adminOnly && !item.badge && (
               <Shield className="ml-auto h-3 w-3 text-muted-foreground" />
             )}
           </Link>

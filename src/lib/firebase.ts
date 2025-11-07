@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, setLogLevel, connectFirestoreEmulator, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, addDoc, arrayUnion, arrayRemove, increment, onSnapshot, orderBy, limit, documentId, writeBatch } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import type { UserProfile, UserRole, Event, WasteLog, LeaderboardEntry, NgoLeaderboardEntry } from "./types";
+import type { UserProfile, UserRole, Event, WasteLog, LeaderboardEntry, NgoLeaderboardEntry, VolunteerVerification, VerificationStatus } from "./types";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -599,9 +599,29 @@ export async function logWasteForEvent(eventId: string, wasteData: Omit<WasteLog
     await updateDoc(wasteLogRef, { id: wasteLogRef.id });
 
     // Update event waste total (allowed by rules)
-    await updateDoc(doc(db, 'events', eventId), {
-      wasteCollectedKg: increment(wasteData.weightKg)
-    });
+    // Use increment() for atomic updates - this is allowed by security rules
+    try {
+      await updateDoc(doc(db, 'events', eventId), {
+        wasteCollectedKg: increment(wasteData.weightKg)
+      });
+    } catch (updateError: any) {
+      // If increment fails due to permissions, try to read and update manually
+      if (updateError?.code === 'permission-denied') {
+        console.warn('Increment operation failed, trying manual update');
+        const eventRef = doc(db, 'events', eventId);
+        const eventSnap = await getDoc(eventRef);
+        if (eventSnap.exists()) {
+          const currentWaste = eventSnap.data().wasteCollectedKg || 0;
+          await updateDoc(eventRef, {
+            wasteCollectedKg: currentWaste + wasteData.weightKg
+          });
+        } else {
+          throw new Error('Event not found');
+        }
+      } else {
+        throw updateError;
+      }
+    }
 
     // Add points to the user (allowed self-update by rules)
     const pointsToAdd = Math.round(wasteData.weightKg * 10);
@@ -631,6 +651,93 @@ export async function checkUserRegistration(eventId: string, userId: string): Pr
     return snap.exists();
   } catch (error) {
     console.error('Error checking registration:', error);
+    return false;
+  }
+}
+
+// Volunteer verification functions (for waste logging)
+export async function createVolunteerVerification(
+  volunteerId: string,
+  eventId: string,
+  driveLink: string,
+  wasteLogId?: string,
+  location?: { latitude: number; longitude: number; timestamp: string }
+): Promise<string> {
+  try {
+    const verificationRef = doc(collection(db, 'volunteerVerifications'));
+    const verificationData: Omit<VolunteerVerification, 'id'> = {
+      volunteerId,
+      eventId,
+      driveLink,
+      wasteLogId,
+      status: 'pending',
+      uploadedAt: new Date().toISOString(),
+      location,
+    };
+    await setDoc(verificationRef, verificationData);
+    return verificationRef.id;
+  } catch (error) {
+    console.error('Error creating volunteer verification:', error);
+    throw error;
+  }
+}
+
+export async function getVolunteerVerification(
+  volunteerId: string,
+  eventId: string
+): Promise<VolunteerVerification | null> {
+  try {
+    const q = query(
+      collection(db, 'volunteerVerifications'),
+      where('volunteerId', '==', volunteerId),
+      where('eventId', '==', eventId)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() } as VolunteerVerification;
+  } catch (error) {
+    console.error('Error getting volunteer verification:', error);
+    return null;
+  }
+}
+
+export async function updateVerificationStatus(
+  verificationId: string,
+  status: VerificationStatus,
+  approvedBy: string,
+  rejectionReason?: string
+): Promise<void> {
+  try {
+    const verificationRef = doc(db, 'volunteerVerifications', verificationId);
+    const updateData: Partial<VolunteerVerification> = {
+      status,
+      approvedBy,
+    };
+    if (status === 'approved') {
+      updateData.approvedAt = new Date().toISOString();
+    } else if (status === 'rejected') {
+      updateData.rejectedAt = new Date().toISOString();
+      if (rejectionReason) {
+        updateData.rejectionReason = rejectionReason;
+      }
+    }
+    await updateDoc(verificationRef, updateData);
+  } catch (error) {
+    console.error('Error updating verification status:', error);
+    throw error;
+  }
+}
+
+export async function checkVolunteerVerification(
+  volunteerId: string,
+  eventId: string
+): Promise<boolean> {
+  try {
+    const verification = await getVolunteerVerification(volunteerId, eventId);
+    return verification?.status === 'approved';
+  } catch (error) {
+    console.error('Error checking volunteer verification:', error);
     return false;
   }
 }

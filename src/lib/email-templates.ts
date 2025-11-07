@@ -119,3 +119,18 @@ export function getVolunteerVerificationEmailTemplate(name: string, otp: string)
   `;
   return { subject, html };
 }
+
+export function getVerificationApprovalTemplate(name: string, eventName: string) {
+  const subject = `Your Waste Collection Verification Approved - ${eventName}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Great news, ${name}!</h2>
+      <p>Your Google Drive link for waste collection has been reviewed and approved by the event admin.</p>
+      <h3>Event: ${eventName}</h3>
+      <p>You can now log waste for this event. Simply go to the waste logging form and submit your waste collection details.</p>
+      <p>Thank you for your contribution to keeping our coastlines clean!</p>
+      <p>Best regards,<br/>The BeachGuardians Team</p>
+    </div>
+  `;
+  return { subject, html };
+}

@@ -70,7 +70,13 @@ service cloud.firestore {
     // Events: signed-in can read; only admins write
     match /events/{eventId} {
       allow read: if true; // public visibility
-      allow write: if isAdmin();
+      allow create: if isAdmin();
+      // Allow admins to update anything, or volunteers to update only wasteCollectedKg (for waste logging)
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        // Only allow updating wasteCollectedKg field (for increment operations)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wasteCollectedKg'])
+      );
       // Allow event deletion by admins or the event organizer
       allow delete: if isAdmin() || (isSignedIn() && resource.data.organizerId == request.auth.uid);
 
@@ -171,6 +177,40 @@ service cloud.firestore {
     // Admins registry: allow only admins to read/write
     match /admins/{uid} {
       allow read, write: if isAdmin();
+    }
+
+    // Volunteer verifications: volunteers can create/read their own, admins can read/write all
+    match /volunteerVerifications/{verificationId} {
+      // List: admins can query all verifications
+      allow list: if isAdmin();
+
+      // Read: volunteer can read their own, admins can read all
+      allow read: if isSignedIn() && (
+        resource.data.volunteerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Create: volunteers can create their own verification
+      // Must set volunteerId to their own uid, and include required fields
+      allow create: if isSignedIn() && (
+        (request.resource.data.volunteerId == request.auth.uid &&
+         request.resource.data.eventId is string &&
+         request.resource.data.driveLink is string &&
+         request.resource.data.status == 'pending' &&
+         request.resource.data.uploadedAt is string) ||
+        isAdmin()
+      );
+
+      // Update: only admins can update (approve/reject)
+      // Admins can change status and approval fields
+      allow update: if isAdmin() && (
+        request.resource.data.volunteerId == resource.data.volunteerId &&
+        request.resource.data.eventId == resource.data.eventId &&
+        request.resource.data.driveLink == resource.data.driveLink
+      );
+
+      // Delete: only admins can delete
+      allow delete: if isAdmin();
     }
 
     // Default deny fallback
