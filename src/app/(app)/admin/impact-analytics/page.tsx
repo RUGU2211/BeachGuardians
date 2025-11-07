@@ -235,28 +235,63 @@ export default function ImpactAnalyticsPage() {
     }
   };
 
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     if (!analyticsData) return;
     
-    const reportData = {
-      generatedAt: new Date().toISOString(),
-      ...analyticsData,
-    };
-    
-    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `beachguardians-analytics-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    toast({
-      title: 'Report Downloaded',
-      description: 'Analytics report has been downloaded.',
-    });
+    try {
+      // Prepare report data
+      const reportData = {
+        totalEvents: analyticsData.totalEvents,
+        totalVolunteers: analyticsData.totalVolunteers,
+        activeVolunteers: analyticsData.activeVolunteers,
+        totalWasteCollected: analyticsData.totalWasteCollected,
+        upcomingEvents: analyticsData.upcomingEvents,
+        completedEvents: analyticsData.completedEvents,
+        wasteByMonth: analyticsData.wasteByMonth,
+        topVolunteers: analyticsData.topVolunteers.map(v => ({
+          fullName: v.fullName,
+          points: v.points || 0,
+          totalWasteContributed: v.totalWasteContributed || 0,
+          eventsCount: v.eventsCount || 0,
+        })),
+      };
+
+      // Call PDF generation API
+      const response = await fetch('/api/report/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reportData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF report');
+      }
+
+      // Get PDF blob
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `beachguardians-impact-report-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: 'Report Downloaded',
+        description: 'Impact report PDF has been downloaded successfully.',
+      });
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate PDF report. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {

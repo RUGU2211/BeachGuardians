@@ -8,7 +8,6 @@ import UpcomingEventsAdvanced from '@/components/landing/UpcomingEventsAdvanced'
 import EventMapPreview from '@/components/landing/EventMapPreview';
 import LeaderboardHighlights from '@/components/landing/LeaderboardHighlights';
 import ImpactStats from '@/components/landing/ImpactStats';
-import AIChatbot from '@/components/landing/AIChatbot';
 import Testimonials from '@/components/landing/Testimonials';
 import HowItWorks from '@/components/landing/HowItWorks';
 import Partners from '@/components/landing/Partners';
@@ -180,9 +179,6 @@ export default function HomePage() {
          </div>
          <div className="container mx-auto mt-6 text-xs text-muted-foreground">&copy; {new Date().getFullYear()} BeachGuardians. All rights reserved.</div>
       </footer>
-
-      {/* AI Chatbot Assistant */}
-      <AIChatbot />
     </div>
   );
 }

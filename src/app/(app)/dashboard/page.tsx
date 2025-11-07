@@ -24,6 +24,7 @@ import EventMapPreview from '@/components/landing/EventMapPreview';
 import { collection, query, where, onSnapshot, orderBy, doc, collectionGroup, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Event, WasteLog, UserProfile } from '@/lib/types';
+import { getEventStatus } from '@/lib/event-filters';
 
 const chartConfig = {
   wasteCollected: { label: 'Waste (kg)', color: 'hsl(var(--chart-1))' },
@@ -201,9 +202,10 @@ export default function DashboardPage() {
       events.forEach((evt) => (evt.volunteers || []).forEach((uid) => volunteerSet.add(uid)));
       const totalVolunteers = isAdminRole ? users.length || volunteerSet.size : volunteerSet.size;
       const totalEventsCount = events.length;
-      const upcomingEventsCount = events.filter(event => 
-        event.status === 'upcoming' || event.status === 'ongoing'
-      ).length;
+      const upcomingEventsCount = events.filter(event => {
+        const status = getEventStatus(event);
+        return status === 'upcoming' || status === 'ongoing';
+      }).length;
 
       // Calculate user-specific stats
       // Fallback calculation from event doc volunteers (in case regs query fails)
@@ -272,7 +274,8 @@ export default function DashboardPage() {
         events.forEach(event => {
           const eventDate = parseISO(event.date);
           if (isWithinInterval(eventDate, { start, end })) {
-            if(event.status === 'completed' || event.status === 'ongoing'){
+            const status = getEventStatus(event);
+            if(status === 'completed' || status === 'ongoing'){
               event.volunteers.forEach(volId => activeVolunteersThisMonth.add(volId));
             }
           }
@@ -367,15 +370,37 @@ export default function DashboardPage() {
       });
       setRecentWasteLogs(recentLogs);
 
-      // Process upcoming events
-      const upcomingEventsData = events.filter(event => 
-        event.status === 'upcoming' || event.status === 'ongoing'
-      );
+      // Process upcoming events - dynamically calculate status
+      const upcomingEventsData = events.filter(event => {
+        const status = getEventStatus(event);
+        return status === 'upcoming' || status === 'ongoing';
+      });
       setUpcomingEvents(upcomingEventsData);
 
       setLoadingData(false);
     }
   }, [events, wasteLogs, users, user?.uid, userProfile]);
+
+  // Update upcoming events periodically to handle time-based status changes
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const updateUpcomingEvents = () => {
+      const upcomingEventsData = events.filter(event => {
+        const status = getEventStatus(event);
+        return status === 'upcoming' || status === 'ongoing';
+      });
+      setUpcomingEvents(upcomingEventsData);
+    };
+
+    // Update immediately
+    updateUpcomingEvents();
+
+    // Update every minute to handle events that transition from upcoming to ongoing/completed
+    const interval = setInterval(updateUpcomingEvents, 60000); // 60 seconds
+
+    return () => clearInterval(interval);
+  }, [events]);
 
 
 

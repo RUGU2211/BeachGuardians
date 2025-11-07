@@ -58,13 +58,19 @@ export default function CertificateIssuancePage() {
     setSendingCertificate(prev => ({ ...prev, [user.uid]: true }));
     
     try {
+      // Calculate waste collected from user's waste logs if needed
+      // For now, we'll pass available data and let the API handle defaults
       const response = await fetch('/api/certificate/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user: {
           fullName: user.fullName,
           email: user.email,
-          points: user.points,
+          points: user.points || 0,
+          eventsAttended: user.eventsAttended || [],
+          wasteCollected: (user as any).wasteCollected || 0, // May need to calculate from waste logs
+          badges: (user as any).badges || [],
+          badgesCount: (user as any).badgesCount || 0,
         } }),
       });
 

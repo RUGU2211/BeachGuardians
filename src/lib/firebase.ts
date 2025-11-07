@@ -130,13 +130,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
       return userDoc.data() as UserProfile;
     }
     return null;
-  } catch (error: any) {
-    // Handle permission errors gracefully
-    if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
-      console.warn('Permission denied while fetching user profile:', uid);
-      // Return null instead of throwing to allow UI to handle gracefully
-      return null;
-    }
+  } catch (error) {
     console.error('Error fetching user profile:', error);
     return null;
   }
@@ -600,7 +594,6 @@ export async function logWasteForEvent(eventId: string, wasteData: Omit<WasteLog
       loggedBy: user.uid,
       userId: user.uid,
       date: new Date().toISOString(),
-      adminName: wasteData.adminName || undefined,
     };
     const wasteLogRef = await addDoc(collection(db, 'wasteLogs'), wasteLog);
     await updateDoc(wasteLogRef, { id: wasteLogRef.id });

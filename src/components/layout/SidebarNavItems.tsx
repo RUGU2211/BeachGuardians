@@ -21,6 +21,14 @@ import {
   Award,
   Map,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+type NavItem = {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+};
 
 export function SidebarNavItems() {
   const pathname = usePathname();
@@ -36,7 +44,7 @@ export function SidebarNavItems() {
     }
   };
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
       title: 'Dashboard',
       href: '/dashboard',
@@ -74,7 +82,7 @@ export function SidebarNavItems() {
     },
   ];
 
-  const adminNavItems = [
+  const adminNavItems: NavItem[] = [
     {
       title: 'AI Content',
       href: '/admin/ai-content',
