@@ -19,8 +19,6 @@ import { Badge } from '@/components/ui/badge';
 import { WasteCompositionChart } from '@/components/dashboard/WasteCompositionChart';
 import { TopEventsChart } from '@/components/dashboard/TopEventsChart';
 import { LeaderboardWidget } from '@/components/gamification/LeaderboardWidget';
-import { NgoLeaderboardWidget } from '@/components/gamification/NgoLeaderboardWidget';
-import EventMapPreview from '@/components/landing/EventMapPreview';
 import { collection, query, where, onSnapshot, orderBy, doc, collectionGroup, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Event, WasteLog, UserProfile } from '@/lib/types';
@@ -654,43 +652,6 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Event Map Preview */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle className="font-headline">Event Map Preview</CardTitle>
-              <CardDescription>Live event locations based on your access</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <EventMapPreview events={undefined} compact height={280} />
-            </CardContent>
-          </Card>
-          {/* Quick Actions */}
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle className="font-headline">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button asChild className="w-full justify-start">
-                <Link href="/events">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Browse Events
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/waste-logging">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Log Waste
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/leaderboard">
-                  <Trophy className="mr-2 h-4 w-4" />
-                  View Leaderboard
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
           {/* Admin Tools removed as requested */}
 
           {/* Upcoming Events */}
@@ -758,10 +719,7 @@ export default function DashboardPage() {
 
           {/* Real-time Leaderboards (admin only to avoid permission issues) */}
           {isAdmin ? (
-            <>
-              <LeaderboardWidget maxEntries={5} showViewAll={true} />
-              <NgoLeaderboardWidget maxEntries={5} showViewAll={true} sortBy="waste" />
-            </>
+            <LeaderboardWidget maxEntries={5} showViewAll={true} />
           ) : (
             <Card className="shadow-sm hover:shadow-md transition-shadow">
               <CardHeader>

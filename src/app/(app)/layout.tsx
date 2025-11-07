@@ -86,9 +86,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           <SidebarNavItems />
         </SidebarContent>
         <SidebarFooter>
-          <Button variant="ghost" className="w-full justify-start group-data-[collapsible=icon]:justify-center" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4 group-data-[collapsible=icon]:mr-0" />
-            <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+          <Button 
+            variant="ghost" 
+            size="icon"
+            className="w-full justify-start group-data-[collapsible=icon]:justify-center rounded-lg hover:bg-destructive/10 hover:text-destructive" 
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="ml-2 group-data-[collapsible=icon]:hidden">Logout</span>
           </Button>
         </SidebarFooter>
         <SidebarRail />

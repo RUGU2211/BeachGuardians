@@ -677,13 +677,6 @@ export default function AIContentPage() {
                           <Download className="mr-2 h-4 w-4" />
                           Download
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => {
-                          navigator.clipboard.writeText(generatedPosterUrl);
-                          toast({ title: 'Copied!', description: 'Poster URL copied to clipboard.' });
-                        }}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy URL
-            </Button>
                       </div>
                     </>
                   ) : (

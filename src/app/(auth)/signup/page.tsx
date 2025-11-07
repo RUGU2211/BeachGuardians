@@ -108,11 +108,21 @@ export default function SignupPage() {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send OTP');
+      // Read response once to avoid consuming the body multiple times
+      const responseText = await response.text();
+      let responseData;
+      
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        // Response is not JSON, use text as message
+        responseData = { message: responseText };
       }
 
+      if (!response.ok) {
+        const errorMessage = responseData.error || responseData.message || 'Failed to send OTP';
+        throw new Error(errorMessage);
+      }
       setPendingFormData(data);
       setShowOtpVerification(true);
       toast({
@@ -121,9 +131,10 @@ export default function SignupPage() {
       });
     } catch (error: any) {
       console.error('Error sending OTP:', error);
+      const errorMessage = error.message || 'Please try again.';
       toast({
         title: 'Failed to Send Verification Code',
-        description: error.message || 'Please try again.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

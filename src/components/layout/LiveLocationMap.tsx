@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
 import { getRealTimeLocatedUsers, subscribeToEvents } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { UserProfile, Event } from '@/lib/types';
@@ -32,31 +31,36 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { pickEventImage } from '@/lib/event-images';
+import { fixLeafletIcons } from '@/lib/leaflet-fix';
+
+// Fix icons on client side (CSS is loaded via CDN in layout.tsx)
+if (typeof window !== 'undefined') {
+  fixLeafletIcons();
+}
 
 // Cache Leaflet dynamic import and use dist build to avoid heavy src chunk
 let cachedLeaflet: Promise<any> | null = null;
 async function loadLeaflet() {
   if (!cachedLeaflet) {
-    cachedLeaflet = import('leaflet/dist/leaflet.js');
+    cachedLeaflet = import('leaflet/dist/leaflet.js').then((L) => {
+      // Fix icons when Leaflet is loaded
+      if (L.default && L.default.Icon) {
+        try {
+          delete (L.default.Icon.Default.prototype as any)._getIconUrl;
+          L.default.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+          });
+        } catch (e) {
+          console.warn('Leaflet icon configuration skipped:', e);
+        }
+      }
+      return L;
+    });
   }
   return cachedLeaflet;
 }
-
-// Configure Leaflet marker icons after dynamic import; keeps bundle lean
-loadLeaflet()
-  .then((L) => {
-    try {
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
-        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-      });
-    } catch (e) {
-      console.warn('Leaflet icon configuration skipped:', e);
-    }
-  })
-  .catch((e) => console.warn('Leaflet import failed:', e));
 
 interface UserLocation extends UserProfile {
   location: {
@@ -662,19 +666,7 @@ export const LiveLocationMap: React.FC<LiveLocationMapProps> = ({ isAdmin }) => 
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow" />
-              <span className="text-sm">You</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-yellow-500 border-2 border-white shadow" />
-              <span className="text-sm">Admins</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow" />
-              <span className="text-sm">Volunteers</span>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow flex items-center justify-center text-white text-xs">📅</div>
               <span className="text-sm">Upcoming Events</span>

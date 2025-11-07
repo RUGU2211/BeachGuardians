@@ -262,13 +262,6 @@ export function AIFeaturesDashboard() {
                   >
                     Download PNG
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigator.clipboard.writeText(imageGen.data!.imageDataUri)}
-                  >
-                    Copy URL
-                  </Button>
                 </div>
               </div>
             )}

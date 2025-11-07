@@ -11,13 +11,6 @@ function formatNumber(num: number) {
   return num.toString().replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,');
 }
 
-// Generate certificate ID
-function generateCertificateId(): string {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `CERT-${timestamp}-${random}`;
-}
-
 export async function POST(req: Request) {
   try {
     const { user } = await req.json();
@@ -27,21 +20,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User data is incomplete' }, { status: 400 });
     }
 
-<<<<<<< HEAD
-    // Calculate additional stats
-    const eventsAttended = user.eventsAttended?.length || 0;
-    const wasteCollected = user.wasteCollected || 0;
-    const pointsEarned = user.points || 0;
-    const badgesEarned = Array.isArray(user.badges) ? user.badges.length : (user.badgesCount || 0);
-    // CO2 saved: 1kg waste -> 1.7kg CO2e
-    const co2Saved = Math.round(wasteCollected * 1.7);
-    // Trees saved: 1 tree absorbs ~22kg CO2 per year, so CO2 saved / 22
-    const treesSaved = Math.round(co2Saved / 22);
-
-    // --- PDF Generation ---
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([841.89, 595.28]); // A4 Landscape (horizontal)
-=======
     // Fetch additional user statistics from Firestore
     let userStats = {
       eventsAttended: user.eventsAttended?.length || 0,
@@ -65,16 +43,44 @@ export async function POST(req: Request) {
           : (userData?.badgesCount || 0);
       }
 
-      // Get waste logs for this user
-      const wasteLogsSnapshot = await db.collection('wasteLogs')
+      // Get waste logs for this user - check both userId and loggedBy fields
+      // Note: Firestore doesn't support OR queries, so we need to fetch both and merge
+      const wasteLogsByUserId = await db.collection('wasteLogs')
         .where('userId', '==', userId)
         .get();
       
-      let totalWaste = 0;
-      wasteLogsSnapshot.forEach((doc) => {
+      const wasteLogsByLoggedBy = await db.collection('wasteLogs')
+        .where('loggedBy', '==', userId)
+        .get();
+      
+      // Merge and deduplicate waste logs
+      const wasteLogMap = new Map<string, number>();
+      
+      wasteLogsByUserId.forEach((doc) => {
         const logData = doc.data();
-        totalWaste += Number(logData?.weightKg || 0);
+        const logId = doc.id;
+        const weight = Number(logData?.weightKg || 0);
+        if (weight > 0) {
+          wasteLogMap.set(logId, weight);
+        }
       });
+      
+      wasteLogsByLoggedBy.forEach((doc) => {
+        const logData = doc.data();
+        const logId = doc.id;
+        const weight = Number(logData?.weightKg || 0);
+        // Only add if not already counted (avoid duplicates)
+        if (weight > 0 && !wasteLogMap.has(logId)) {
+          wasteLogMap.set(logId, weight);
+        }
+      });
+      
+      // Calculate total waste
+      let totalWaste = 0;
+      wasteLogMap.forEach((weight) => {
+        totalWaste += weight;
+      });
+      
       userStats.wasteCollected = totalWaste;
 
       // Calculate environmental impact
@@ -87,7 +93,6 @@ export async function POST(req: Request) {
     // --- PDF Generation ---
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595.28, 841.89]); // A4 Portrait for better certificate layout
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
     const { width, height } = page.getSize();
 
     // Load logo and fonts
@@ -101,468 +106,201 @@ export async function POST(req: Request) {
     const scriptFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Draw decorative border
-<<<<<<< HEAD
-    const borderThickness = 8;
-    const borderColor = rgb(0.1, 0.3, 0.6); // Dark blue
-    const yellowAccent = rgb(1, 0.84, 0); // Yellow
+    // Draw borders matching the image design
+    // Blue borders on top, bottom, and right edges
+    // Yellow border on left edge with blue inner line
+    const borderWidth = 12;
+    const borderColor = rgb(0.1, 0.4, 0.7); // Dark blue
+    const yellowBorderColor = rgb(0.95, 0.75, 0.1); // Yellow
+    const innerBlueLineColor = rgb(0.1, 0.4, 0.7); // Blue inner line
     
-    // Outer border
+    // White background
     page.drawRectangle({
-      x: borderThickness,
-      y: borderThickness,
-      width: width - (borderThickness * 2),
-      height: height - (borderThickness * 2),
-      borderColor: borderColor,
-      borderWidth: borderThickness,
-      color: rgb(0.96, 0.98, 1), // Light blue background
-=======
-    const borderWidth = 8;
-    const borderColor = rgb(0.1, 0.4, 0.7);
-    const innerBorderColor = rgb(0.9, 0.7, 0.1);
-    
-    // Outer border
+      x: 0,
+      y: 0,
+      width: width,
+      height: height,
+      color: rgb(1, 1, 1), // White background
+    });
+
+    // Top border (blue)
+    page.drawRectangle({
+      x: 0,
+      y: height - borderWidth,
+      width: width,
+      height: borderWidth,
+      color: borderColor,
+    });
+
+    // Bottom border (blue)
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: width,
+      height: borderWidth,
+      color: borderColor,
+    });
+
+    // Right border (blue)
+    page.drawRectangle({
+      x: width - borderWidth,
+      y: 0,
+      width: borderWidth,
+      height: height,
+      color: borderColor,
+    });
+
+    // Left border (yellow)
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: borderWidth,
+      height: height,
+      color: yellowBorderColor,
+    });
+
+    // Blue inner line next to yellow border (thin vertical line)
+    const innerLineWidth = 2;
     page.drawRectangle({
       x: borderWidth,
-      y: borderWidth,
-      width: width - borderWidth * 2,
-      height: height - borderWidth * 2,
-      borderColor: borderColor,
-      borderWidth: borderWidth,
+      y: 0,
+      width: innerLineWidth,
+      height: height,
+      color: innerBlueLineColor,
     });
 
-    // Inner decorative border
-    page.drawRectangle({
-      x: borderWidth * 2,
-      y: borderWidth * 2,
-      width: width - borderWidth * 4,
-      height: height - borderWidth * 4,
-      borderColor: innerBorderColor,
-      borderWidth: 2,
-    });
+    // Account for borders when positioning content
+    const contentPadding = borderWidth + innerLineWidth + 20; // Left padding accounting for yellow border + blue line
+    const rightPadding = borderWidth + 20; // Right padding for blue border
+    const topPadding = borderWidth + 30; // Top padding for blue border
+    const bottomPadding = borderWidth + 20; // Bottom padding for blue border
 
-    // Draw gradient-like background
-    page.drawRectangle({
-      x: borderWidth * 2,
-      y: borderWidth * 2,
-      width: width - borderWidth * 4,
-      height: height - borderWidth * 4,
-      color: rgb(0.97, 0.98, 1), // Very light blue background
-    });
-
-    // Draw decorative corner elements (aligned with inner border)
-    const cornerSize = 35;
-    const cornerThickness = 3;
-    const cornerOffset = borderWidth * 2 + 15; // Align with inner border
-    
-    // Top-left corner
-    page.drawLine({
-      start: { x: cornerOffset, y: height - cornerOffset },
-      end: { x: cornerOffset + cornerSize, y: height - cornerOffset },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: cornerOffset, y: height - cornerOffset },
-      end: { x: cornerOffset, y: height - cornerOffset - cornerSize },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    // Top-right corner
-    page.drawLine({
-      start: { x: width - cornerOffset, y: height - cornerOffset },
-      end: { x: width - cornerOffset - cornerSize, y: height - cornerOffset },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: width - cornerOffset, y: height - cornerOffset },
-      end: { x: width - cornerOffset, y: height - cornerOffset - cornerSize },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    // Bottom-left corner
-    page.drawLine({
-      start: { x: cornerOffset, y: cornerOffset },
-      end: { x: cornerOffset + cornerSize, y: cornerOffset },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: cornerOffset, y: cornerOffset },
-      end: { x: cornerOffset, y: cornerOffset + cornerSize },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    // Bottom-right corner
-    page.drawLine({
-      start: { x: width - cornerOffset, y: cornerOffset },
-      end: { x: width - cornerOffset - cornerSize, y: cornerOffset },
-      thickness: cornerThickness,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: width - cornerOffset, y: cornerOffset },
-      end: { x: width - cornerOffset, y: cornerOffset + cornerSize },
-      thickness: cornerThickness,
-      color: borderColor,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
-    });
-
-    // Yellow accent line on left
-    page.drawRectangle({
-      x: borderThickness * 2,
-      y: borderThickness * 2,
-      width: 4,
-      height: height - (borderThickness * 4),
-      color: yellowAccent,
-    });
-
-    // Blue accent line on right
-    page.drawRectangle({
-      x: width - (borderThickness * 2) - 4,
-      y: borderThickness * 2,
-      width: 4,
-      height: height - (borderThickness * 4),
-      color: borderColor,
-    });
-
-    // Corner decorations (L-shaped)
-    const cornerSize = 30;
-    // Top-left corner
-    page.drawLine({
-      start: { x: borderThickness * 2, y: height - (borderThickness * 2) },
-      end: { x: borderThickness * 2 + cornerSize, y: height - (borderThickness * 2) },
-      thickness: 3,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: borderThickness * 2, y: height - (borderThickness * 2) },
-      end: { x: borderThickness * 2, y: height - (borderThickness * 2) - cornerSize },
-      thickness: 3,
-      color: borderColor,
-    });
-
-    // Bottom-right corner
-    page.drawLine({
-      start: { x: width - (borderThickness * 2), y: borderThickness * 2 },
-      end: { x: width - (borderThickness * 2) - cornerSize, y: borderThickness * 2 },
-      thickness: 3,
-      color: borderColor,
-    });
-    page.drawLine({
-      start: { x: width - (borderThickness * 2), y: borderThickness * 2 },
-      end: { x: width - (borderThickness * 2), y: borderThickness * 2 + cornerSize },
-      thickness: 3,
-      color: borderColor,
-    });
-
-    // Draw logo
+    // Draw logo (centered, accounting for borders)
     page.drawImage(logoImage, {
       x: width / 2 - logoDims.width / 2,
-<<<<<<< HEAD
-      y: height - 60,
-=======
-      y: height - 90,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
+      y: height - topPadding - 50,
       width: logoDims.width,
       height: logoDims.height,
     });
 
-<<<<<<< HEAD
-    // Draw "BeachGuardians" text below logo
-    const beachGuardiansText = 'BeachGuardians';
-    const beachGuardiansWidth = titleFont.widthOfTextAtSize(beachGuardiansText, 24);
-    page.drawText(beachGuardiansText, {
-      x: (width - beachGuardiansWidth) / 2,
-      y: height - 100,
-      font: titleFont,
-      size: 24,
-      color: borderColor,
+    // Draw "BeachGuardians" text below logo (matching image)
+    page.drawText('BeachGuardians', {
+      x: width / 2,
+      y: height - topPadding - 65,
+      font: bodyFont,
+      size: 14,
+      color: rgb(0.1, 0.4, 0.7),
+      align: 'center',
     });
 
     // Draw title "Certificate of Appreciation"
-    const titleText = 'Certificate of Appreciation';
-    const titleWidth = titleFont.widthOfTextAtSize(titleText, 36);
-    page.drawText(titleText, {
-      x: (width - titleWidth) / 2,
-      y: height - 150,
-      font: titleFont,
-      size: 36,
-      color: borderColor,
-    });
-
-    // Yellow underline for title
-    page.drawLine({
-      start: { x: width / 2 - 150, y: height - 165 },
-      end: { x: width / 2 + 150, y: height - 165 },
-      thickness: 2,
-      color: yellowAccent,
-    });
-
-    // Draw "Proudly Presented To"
-    const presentedText = 'Proudly Presented To';
-    const presentedWidth = bodyFont.widthOfTextAtSize(presentedText, 16);
-    page.drawText(presentedText, {
-      x: (width - presentedWidth) / 2,
-      y: height - 200,
-      font: bodyFont,
-      size: 16,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
-    // Draw volunteer's name
-    const nameWidth = scriptFont.widthOfTextAtSize(user.fullName, 42);
-    page.drawText(user.fullName, {
-      x: (width - nameWidth) / 2,
-      y: height - 250,
-      font: scriptFont,
-      size: 42,
-      color: rgb(0.85, 0.65, 0.13), // Gold color
-    });
-
-    // Blue underline for name
-    page.drawLine({
-      start: { x: width / 2 - 120, y: height - 265 },
-      end: { x: width / 2 + 120, y: height - 265 },
-      thickness: 2,
-      color: borderColor,
-    });
-
-    // Draw appreciation message
-    const message = `In recognition of your outstanding dedication and invaluable contributions to protecting our environment. Your commitment to environmental conservation has made a significant positive impact on our mission.`;
-    // Split message into lines for better formatting
-    const messageLines = message.match(/.{1,80}(\s|$)/g) || [message];
-    const messageStartY = height - 320;
-    messageLines.forEach((line, index) => {
-      const lineWidth = bodyFont.widthOfTextAtSize(line.trim(), 14);
-      page.drawText(line.trim(), {
-        x: (width - lineWidth) / 2,
-        y: messageStartY - (index * 20),
-        font: bodyFont,
-        size: 14,
-        color: rgb(0.3, 0.3, 0.3),
-      });
-    });
-
-    // Draw statistics box
-    const statsBoxY = height - 420;
-    const statsBoxHeight = 120;
-    const statsBoxX = width / 2 - 300;
-    const statsBoxWidth = 600;
-
-    // Box background
-    page.drawRectangle({
-      x: statsBoxX,
-      y: statsBoxY,
-      width: statsBoxWidth,
-      height: statsBoxHeight,
-      borderColor: borderColor,
-      borderWidth: 2,
-      color: rgb(0.98, 0.99, 1),
-    });
-
-    // Box title
-    const statsTitleText = 'Your Contribution Statistics';
-    const statsTitleWidth = titleFont.widthOfTextAtSize(statsTitleText, 16);
-    page.drawText(statsTitleText, {
-      x: statsBoxX + (statsBoxWidth - statsTitleWidth) / 2,
-      y: statsBoxY + statsBoxHeight - 20,
-      font: titleFont,
-      size: 16,
-      color: borderColor,
-    });
-
-    // Statistics in two columns
-    const statsLeftX = statsBoxX + 40;
-    const statsRightX = statsBoxX + statsBoxWidth / 2 + 20;
-    const statsStartY = statsBoxY + statsBoxHeight - 50;
-    const statsLineHeight = 18;
-
-    // Left column
-    page.drawText('Events Attended:', {
-      x: statsLeftX,
-      y: statsStartY,
-      font: bodyFont,
-      size: 12,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    page.drawText(`${formatNumber(eventsAttended)}`, {
-      x: statsLeftX + 120,
-      y: statsStartY,
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    page.drawText('Waste Collected:', {
-      x: statsLeftX,
-      y: statsStartY - statsLineHeight,
-      font: bodyFont,
-      size: 12,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    page.drawText(`${formatNumber(wasteCollected.toFixed(1))} kg`, {
-      x: statsLeftX + 120,
-      y: statsStartY - statsLineHeight,
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    page.drawText('Points Earned:', {
-      x: statsLeftX,
-      y: statsStartY - (statsLineHeight * 2),
-      font: bodyFont,
-      size: 12,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    page.drawText(`${formatNumber(pointsEarned)}`, {
-      x: statsLeftX + 120,
-      y: statsStartY - (statsLineHeight * 2),
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    // Right column
-    page.drawText('Badges Earned:', {
-      x: statsRightX,
-=======
-    // Draw title with better styling
     page.drawText('Certificate of Appreciation', {
-      x: 50,
-      y: height - 170,
+      x: contentPadding,
+      y: height - topPadding - 120,
       font: titleFont,
       size: 36,
       color: rgb(0.1, 0.4, 0.7),
-      width: width - 100,
+      width: width - contentPadding - rightPadding,
       align: 'center',
     });
 
-    // Draw decorative line under title (shorter, centered)
+    // Draw decorative yellow line under title (shorter, centered)
     page.drawLine({
-      start: { x: width / 2 - 100, y: height - 195 },
-      end: { x: width / 2 + 100, y: height - 195 },
+      start: { x: width / 2 - 100, y: height - topPadding - 145 },
+      end: { x: width / 2 + 100, y: height - topPadding - 145 },
       thickness: 2,
-      color: rgb(0.9, 0.7, 0.1),
+      color: rgb(0.95, 0.75, 0.1),
     });
 
+    // Draw "Proudly Presented To"
     page.drawText('Proudly Presented To', {
-      x: 50,
-      y: height - 230,
+      x: contentPadding,
+      y: height - topPadding - 180,
       font: bodyFont,
       size: 16,
       color: rgb(0.4, 0.4, 0.4),
-      width: width - 100,
+      width: width - contentPadding - rightPadding,
       align: 'center',
     });
 
-    // Draw volunteer's name with better styling
-    const nameY = height - 290;
+    // Draw volunteer's name (gold color, italic) - matching image
+    const nameY = height - topPadding - 240;
     page.drawText(user.fullName, {
-      x: 50,
+      x: contentPadding,
       y: nameY,
       font: scriptFont,
       size: 42,
-      color: rgb(0.85, 0.65, 0.1), // Rich gold color
-      width: width - 100,
+      color: rgb(0.72, 0.53, 0.04), // Golden brown color matching image
+      width: width - contentPadding - rightPadding,
       align: 'center',
     });
 
-    // Calculate name width for underline (approximate based on font size)
-    const nameWidth = user.fullName.length * 20; // Approximate character width
-    const underlineLength = Math.min(nameWidth + 40, 220); // Max 220, min based on name
-    
-    // Draw decorative line under name (proportional to name width)
+    // Draw blue underline under name
+    const nameWidth = user.fullName.length * 20;
+    const underlineLength = Math.min(nameWidth + 40, 220);
     page.drawLine({
-      start: { x: width / 2 - underlineLength / 2, y: height - 315 },
-      end: { x: width / 2 + underlineLength / 2, y: height - 315 },
+      start: { x: width / 2 - underlineLength / 2, y: height - topPadding - 265 },
+      end: { x: width / 2 + underlineLength / 2, y: height - topPadding - 265 },
       thickness: 1.5,
       color: rgb(0.1, 0.4, 0.7),
     });
 
-    // Draw appreciation message (split into two lines for better readability)
-    const message1 = `In recognition of your outstanding dedication and invaluable contributions to protecting our coastlines.`;
-    const message2 = `Your commitment to environmental conservation has made a significant positive impact on our community and the planet.`;
-    
-    page.drawText(message1, {
-      x: 70,
-      y: height - 385,
+    // Draw appreciation message (matching image - single line)
+    const message = `In recognition of your outstanding dedication and invaluable contributions to protecting our coastlines. Your commitment to environmental conservation has made a significant positive impact on our community and the planet.`;
+    page.drawText(message, {
+      x: contentPadding + 20,
+      y: height - topPadding - 330,
       font: bodyFont,
       size: 13,
       lineHeight: 18,
       color: rgb(0.2, 0.2, 0.2),
-      width: width - 140,
-      align: 'center',
-    });
-    
-    page.drawText(message2, {
-      x: 70,
-      y: height - 410,
-      font: bodyFont,
-      size: 13,
-      lineHeight: 18,
-      color: rgb(0.2, 0.2, 0.2),
-      width: width - 140,
+      width: width - contentPadding - rightPadding - 40,
       align: 'center',
     });
 
-    // Draw statistics section with background
-    const statsY = height - 480;
+    // Draw statistics section with background (matching image)
+    const statsY = height - topPadding - 425;
     const statsBoxHeight = 180;
+    const statsBoxX = contentPadding + 20;
+    const statsBoxWidth = width - contentPadding - rightPadding - 40;
     
-    // Draw statistics box background
+    // Draw statistics box background with border
     page.drawRectangle({
-      x: 70,
+      x: statsBoxX,
       y: statsY - statsBoxHeight,
-      width: width - 140,
+      width: statsBoxWidth,
       height: statsBoxHeight,
-      color: rgb(0.95, 0.97, 1),
       borderColor: rgb(0.1, 0.4, 0.7),
       borderWidth: 2,
+      color: rgb(0.98, 0.98, 0.98), // Light grey background
     });
 
     // Draw statistics title
     page.drawText('Your Contribution Statistics', {
-      x: 70,
+      x: statsBoxX,
       y: statsY - 20,
       font: boldFont,
       size: 16,
       color: rgb(0.1, 0.4, 0.7),
-      width: width - 140,
+      width: statsBoxWidth,
       align: 'center',
     });
 
     // Draw statistics in a grid layout
     const statsStartY = statsY - 50;
     const statsRowHeight = 35;
-    const leftColX = 110;
-    const rightColX = width / 2 + 40;
-    const colWidth = (width - 220) / 2 - 40;
+    const leftColX = statsBoxX + 40;
+    const rightColX = width / 2 + 20;
+    const colWidth = (statsBoxWidth - 80) / 2 - 20;
 
     // Left column - Labels
     page.drawText(`Events Attended:`, {
       x: leftColX,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
       y: statsStartY,
       font: bodyFont,
       size: 12,
       color: rgb(0.3, 0.3, 0.3),
     });
-<<<<<<< HEAD
-    page.drawText(`${formatNumber(badgesEarned)}`, {
-      x: statsRightX + 120,
-      y: statsStartY,
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    page.drawText('CO2 Saved:', {
-      x: statsRightX,
-      y: statsStartY - statsLineHeight,
-=======
     page.drawText(`Waste Collected:`, {
       x: leftColX,
       y: statsStartY - statsRowHeight,
@@ -612,74 +350,17 @@ export async function POST(req: Request) {
     page.drawText(`Badges Earned:`, {
       x: rightColX,
       y: statsStartY,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
       font: bodyFont,
       size: 12,
       color: rgb(0.3, 0.3, 0.3),
     });
-<<<<<<< HEAD
-    page.drawText(`${formatNumber(co2Saved)} kg`, {
-      x: statsRightX + 120,
-      y: statsStartY - statsLineHeight,
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    page.drawText('Trees Saved:', {
-      x: statsRightX,
-      y: statsStartY - (statsLineHeight * 2),
-=======
     page.drawText(`CO2 Saved:`, {
       x: rightColX,
       y: statsStartY - statsRowHeight,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
       font: bodyFont,
       size: 12,
       color: rgb(0.3, 0.3, 0.3),
     });
-<<<<<<< HEAD
-    page.drawText(`${formatNumber(treesSaved)}`, {
-      x: statsRightX + 120,
-      y: statsStartY - (statsLineHeight * 2),
-      font: titleFont,
-      size: 12,
-      color: borderColor,
-    });
-
-    // Closing statement
-    const closingText = 'Thank you for being an exemplary BeachGuardian and inspiring others to join our mission';
-    const closingWidth = bodyFont.widthOfTextAtSize(closingText, 13);
-    page.drawText(closingText, {
-      x: (width - closingWidth) / 2,
-      y: statsBoxY - 30,
-      font: bodyFont,
-      size: 13,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-
-    // BeachGuardians Team signature
-    const signatureText = 'BeachGuardians Team';
-    const signatureWidth = bodyFont.widthOfTextAtSize(signatureText, 14);
-    page.drawText(signatureText, {
-      x: (width - signatureWidth) / 2,
-      y: statsBoxY - 60,
-      font: bodyFont,
-      size: 14,
-      color: borderColor,
-    });
-
-    // Underline for signature
-    page.drawLine({
-      start: { x: width / 2 - 80, y: statsBoxY - 70 },
-      end: { x: width / 2 + 80, y: statsBoxY - 70 },
-      thickness: 1,
-      color: borderColor,
-    });
-
-    // Certificate ID and date
-    const certificateId = generateCertificateId();
-=======
     page.drawText(`Trees Saved:`, {
       x: rightColX,
       y: statsStartY - statsRowHeight * 2,
@@ -718,21 +399,21 @@ export async function POST(req: Request) {
       align: 'right',
     });
 
-    // Draw closing message (split to prevent truncation)
+    // Draw closing message (matching image)
     const closingMessage = `Thank you for being an exemplary BeachGuardian and inspiring others to join our mission.`;
     page.drawText(closingMessage, {
-      x: 70,
+      x: contentPadding + 20,
       y: statsY - statsBoxHeight - 35,
       font: bodyFont,
       size: 13,
       lineHeight: 18,
       color: rgb(0.25, 0.25, 0.25),
-      width: width - 140,
+      width: width - contentPadding - rightPadding - 40,
       align: 'center',
     });
     
-    // Draw signature section
-    const signatureY = 140;
+    // Draw signature section (matching image)
+    const signatureY = bottomPadding + 100;
     page.drawLine({
       start: { x: width / 2 - 110, y: signatureY },
       end: { x: width / 2 + 110, y: signatureY },
@@ -749,41 +430,25 @@ export async function POST(req: Request) {
       color: rgb(0.1, 0.4, 0.7),
     });
     
-    // Draw date
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
+    // Draw date (bottom left, matching image)
     const issueDate = new Date().toLocaleDateString('en-US', { 
       year: 'numeric', 
       month: 'long', 
       day: 'numeric' 
     });
-<<<<<<< HEAD
-
     page.drawText(`Issued on: ${issueDate}`, {
-      x: 60,
-      y: 40,
-      font: bodyFont,
-      size: 10,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
-    page.drawText(`Certificate ID: ${certificateId}`, {
-      x: width - 250,
-      y: 40,
-=======
-    page.drawText(`Issued on: ${issueDate}`, {
-      x: 60,
-      y: 80,
+      x: contentPadding + 20,
+      y: bottomPadding + 30,
       font: bodyFont,
       size: 11,
       color: rgb(0.5, 0.5, 0.5),
     });
 
-    // Draw certificate ID
+    // Draw certificate ID (bottom right, matching image)
     const certId = `CERT-${userId.substring(0, 8).toUpperCase()}-${Date.now().toString().substring(7)}`;
     page.drawText(`Certificate ID: ${certId}`, {
-      x: width - 260,
-      y: 80,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
+      x: width - rightPadding - 200,
+      y: bottomPadding + 30,
       font: bodyFont,
       size: 10,
       color: rgb(0.5, 0.5, 0.5),
@@ -820,4 +485,4 @@ export async function POST(req: Request) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json({ error: `Failed to send certificate: ${errorMessage}` }, { status: 500 });
   }
-} 
+}

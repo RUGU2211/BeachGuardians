@@ -66,16 +66,8 @@ export default function CertificateIssuancePage() {
         body: JSON.stringify({ user: {
           fullName: user.fullName,
           email: user.email,
-<<<<<<< HEAD
-          points: user.points || 0,
-          eventsAttended: user.eventsAttended || [],
-          wasteCollected: (user as any).wasteCollected || 0, // May need to calculate from waste logs
-          badges: (user as any).badges || [],
-          badgesCount: (user as any).badgesCount || 0,
-=======
           points: user.points,
           uid: user.uid,
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
         } }),
       });
 

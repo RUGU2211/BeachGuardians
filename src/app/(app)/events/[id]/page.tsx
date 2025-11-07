@@ -27,7 +27,6 @@ import { useToast } from '@/hooks/use-toast';
 import type { Event, UserProfile, VolunteerVerification } from '@/lib/types';
 import { getEventRegistrationConfirmationTemplate, getVerificationApprovalTemplate } from '@/lib/email-templates';
 import { sendEmailFromClient } from '@/lib/client-email';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAuth } from 'firebase/auth';
 import { collection, onSnapshot, query, where, doc } from 'firebase/firestore';
 
@@ -683,18 +682,10 @@ export default function EventDetailPage() {
 
           {/* Supporting Document Section - Visible to all users before registration */}
           {(currentEvent.googleDriveLink || currentEvent.supportingDocumentUrl) && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center space-x-3">
-                <FileText className="h-6 w-6 text-primary" />
-                <div>
-                  <p className="font-medium">Supporting Document</p>
-                  <p className="text-sm text-muted-foreground">Government permission document - View before registering</p>
-                </div>
-              </div>
-              
+            <div className="mt-4">
               {/* Google Drive Document Link */}
               {currentEvent.googleDriveLink && (
-                <div className="mt-4 p-4 border rounded-lg bg-muted/50">
+                <div className="p-4 border rounded-lg bg-muted/50">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center space-x-3">
                       <FileText className="h-6 w-6 text-primary" />
@@ -790,33 +781,20 @@ export default function EventDetailPage() {
         </CardHeader>
         <CardContent>
           {canManageEvent ? (
-            // Admin view: Show counts and verification list
-            <Tabs defaultValue="registered">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="registered">
+            // Admin view: Show registered volunteers list
+            <div>
+              <div className="mb-4">
+                <p className="text-sm font-medium text-muted-foreground mb-2">
                   Registered ({registeredVolunteers.length})
-                </TabsTrigger>
-                <TabsTrigger value="checked-in">
-                  Checked-in ({checkedInVolunteers.length})
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="registered">
-                <VolunteerVerificationList 
-                  volunteers={registeredVolunteers} 
-                  eventId={eventId}
-                  currentUserId={userProfile?.uid || ''}
-                  showOnlyApproved={false}
-                />
-              </TabsContent>
-              <TabsContent value="checked-in">
-                <VolunteerVerificationList 
-                  volunteers={checkedInVolunteers} 
-                  eventId={eventId}
-                  currentUserId={userProfile?.uid || ''}
-                  showOnlyApproved={true}
-                />
-              </TabsContent>
-            </Tabs>
+                </p>
+              </div>
+              <VolunteerVerificationList 
+                volunteers={registeredVolunteers} 
+                eventId={eventId}
+                currentUserId={userProfile?.uid || ''}
+                showOnlyApproved={false}
+              />
+            </div>
           ) : (
             // Volunteer view: Show only registered count
             <div>

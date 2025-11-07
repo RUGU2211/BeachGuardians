@@ -34,11 +34,10 @@ service cloud.firestore {
 
     // Users: owner can read/write their document; role protected
     match /users/{uid} {
-      // List: explicitly allow admins to run collection-wide queries for analytics
-      allow list: if isAdmin();
-
       // Read (get and query per document): owner always allowed, admin check uses resource.data to avoid circular dependency
       // Using `allow read` ensures queries evaluate per-document with `resource.data`
+      // This allows both individual reads and filtered queries (where each document is checked)
+      // Unfiltered queries will only return documents the user has permission to read
       allow read: if isSignedIn() && (
         uid == request.auth.uid || 
         isAdminByResource(resource.data) || 
@@ -116,10 +115,9 @@ service cloud.firestore {
 
     // Waste logs: owned by user; Cloud Functions will recalc leaderboard
     match /wasteLogs/{logId} {
-      // List: allow admins to aggregate across all waste logs for analytics
-      allow list: if isAdmin();
-
       // Read: owner (by userId or loggedBy) or admin
+      // This allows both individual document reads and filtered queries (where each document is checked)
+      // Unfiltered queries will only return documents the user has permission to read
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
         resource.data.loggedBy == request.auth.uid ||
@@ -181,10 +179,8 @@ service cloud.firestore {
 
     // Volunteer verifications: volunteers can create/read their own, admins can read/write all
     match /volunteerVerifications/{verificationId} {
-      // List: admins can query all verifications
-      allow list: if isAdmin();
-
       // Read: volunteer can read their own, admins can read all
+      // This allows both individual reads and filtered queries (where each document is checked)
       allow read: if isSignedIn() && (
         resource.data.volunteerId == request.auth.uid ||
         isAdmin()

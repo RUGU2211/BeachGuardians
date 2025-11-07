@@ -47,6 +47,13 @@ interface EmailOptions {
 }
 
 export const sendEmail = async (options: EmailOptions) => {
+  // Check if email credentials are configured
+  if (!emailUser || !emailPass) {
+    const errorMessage = 'Email service is not configured. EMAIL_USER and EMAIL_PASS environment variables must be set.';
+    console.error(errorMessage);
+    throw new Error(errorMessage);
+  }
+
   try {
     const mailOptions = {
       from: `"BeachGuardians" <${emailUser}>`,
@@ -59,9 +66,19 @@ export const sendEmail = async (options: EmailOptions) => {
     const result = await transporter.sendMail(mailOptions);
     console.log(`Email sent successfully to ${options.to}`, result.messageId);
     return { success: true, messageId: result.messageId };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error sending email:', error);
-    throw new Error(`Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    // Provide more specific error messages
+    if (error.code === 'EAUTH') {
+      throw new Error('Email authentication failed. Please check EMAIL_USER and EMAIL_PASS environment variables.');
+    } else if (error.code === 'ECONNECTION') {
+      throw new Error('Failed to connect to email server. Please check your network connection.');
+    } else if (error.responseCode === 535) {
+      throw new Error('Email authentication failed. Please use an App Password instead of your regular password.');
+    }
+    
+    throw new Error(`Failed to send email: ${error.message || 'Unknown error'}`);
   }
 };
 

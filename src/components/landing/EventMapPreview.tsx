@@ -3,8 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { subscribeToEvents } from '@/lib/firebase';
 import type { Event } from '@/lib/types';
-import 'leaflet/dist/leaflet.css';
 import { pickEventImage } from '@/lib/event-images';
+import { fixLeafletIcons } from '@/lib/leaflet-fix';
+
+// Fix icons on client side (CSS is loaded via CDN in layout.tsx)
+if (typeof window !== 'undefined') {
+  fixLeafletIcons();
+}
 
 interface EventMapPreviewProps {
   events?: Event[];
@@ -68,12 +73,18 @@ export default function EventMapPreview({ events: incomingEvents, compact = fals
       // Ensure Leaflet default marker icons resolve correctly (avoid 404s)
       // Use CDN paths consistent with Leaflet distribution
       // This mirrors fixes present in other map components
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (L.Icon.Default as any).mergeOptions({
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
-        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-      });
+      if (L && L.default && L.default.Icon) {
+        try {
+          delete (L.default.Icon.Default.prototype as any)._getIconUrl;
+          L.default.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+          });
+        } catch (e) {
+          console.warn('Leaflet icon configuration failed:', e);
+        }
+      }
 
       // Guard: if container already has a Leaflet instance (HMR), replace the node
       const container = mapContainerRef.current as any;

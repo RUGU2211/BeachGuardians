@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Navigation, ExternalLink, Loader2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { 
   DIRECTIONS_PROVIDERS, 
@@ -26,17 +25,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { fixLeafletIconsSync } from '@/lib/leaflet-fix';
 
-// Fix Leaflet default icon URLs when bundled
-try {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-  });
-} catch {}
+// Fix Leaflet default icon URLs when bundled (CSS is loaded via CDN in layout.tsx)
+if (typeof window !== 'undefined') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+    });
+    // Also use the utility function
+    fixLeafletIconsSync(L);
+  } catch {}
+}
 
 interface EventLocationProps {
   location: string;

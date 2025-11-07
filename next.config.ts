@@ -89,6 +89,44 @@ const nextConfig: NextConfig = {
         },
       };
     }
+
+    // Fix for Leaflet CSS URL rewriting issue
+    // Find and modify the CSS rule to exclude Leaflet CSS from URL processing
+    const rules = config.module.rules;
+    const cssRule = rules.find((rule: any) => {
+      return rule.test && rule.test.toString().includes('css');
+    });
+
+    if (cssRule && cssRule.oneOf) {
+      cssRule.oneOf.forEach((rule: any) => {
+        if (rule.test && rule.test.toString().includes('css')) {
+          // For Leaflet CSS, don't process URLs
+          const originalUse = rule.use;
+          if (Array.isArray(originalUse)) {
+            rule.use = originalUse.map((loader: any) => {
+              if (typeof loader === 'object' && loader.loader && loader.loader.includes('css-loader')) {
+                return {
+                  ...loader,
+                  options: {
+                    ...loader.options,
+                    url: (url: string) => {
+                      // Don't process absolute URLs (like https://unpkg.com)
+                      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
+                        return false;
+                      }
+                      // Process relative URLs normally
+                      return true;
+                    },
+                  },
+                };
+              }
+              return loader;
+            });
+          }
+        }
+      });
+    }
+
     return config;
   },
 };

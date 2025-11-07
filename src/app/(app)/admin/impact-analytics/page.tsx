@@ -2,7 +2,7 @@
 
 import ProtectedRoute from '@/components/layout/ProtectedRoute';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Map, Download, Loader2, Users, Trash2, Calendar, TrendingUp, Leaf, Waves, Recycle, Zap, TreePine } from 'lucide-react';
+import { BarChart, Map, Loader2, Users, Trash2, Calendar, TrendingUp, Leaf, Waves, Recycle, Zap, TreePine, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useRef } from 'react';
@@ -42,6 +42,7 @@ interface AnalyticsData {
 export default function ImpactAnalyticsPage() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const { toast } = useToast();
   const { userProfile, loading: authLoading } = useAuth();
 
@@ -290,30 +291,31 @@ export default function ImpactAnalyticsPage() {
     }
   };
 
-  const handleDownloadReport = async () => {
+  const handleSendReportViaEmail = async (email?: string) => {
     if (!analyticsData) return;
     
     try {
-<<<<<<< HEAD
-      // Prepare report data
+      setSendingEmail(true);
+      
+      // Get email - use provided email or admin email from profile
+      const recipientEmail = email || userProfile?.email;
+      if (!recipientEmail) {
+        toast({
+          title: 'Error',
+          description: 'Email address not found. Please provide an email address.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Prepare report data for API
       const reportData = {
-        totalEvents: analyticsData.totalEvents,
-        totalVolunteers: analyticsData.totalVolunteers,
-        activeVolunteers: analyticsData.activeVolunteers,
-        totalWasteCollected: analyticsData.totalWasteCollected,
-        upcomingEvents: analyticsData.upcomingEvents,
-        completedEvents: analyticsData.completedEvents,
-        wasteByMonth: analyticsData.wasteByMonth,
-        topVolunteers: analyticsData.topVolunteers.map(v => ({
-          fullName: v.fullName,
-          points: v.points || 0,
-          totalWasteContributed: v.totalWasteContributed || 0,
-          eventsCount: v.eventsCount || 0,
-        })),
+        ...analyticsData,
+        recipientEmail: recipientEmail,
       };
 
-      // Call PDF generation API
-      const response = await fetch('/api/report/generate', {
+      // Call API to generate and send report via email
+      const response = await fetch('/api/report/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -321,189 +323,24 @@ export default function ImpactAnalyticsPage() {
         body: JSON.stringify(reportData),
       });
 
+      const result = await response.json();
       if (!response.ok) {
-        throw new Error('Failed to generate PDF report');
+        throw new Error(result.error || 'Failed to send report via email');
       }
 
-      // Get PDF blob
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `beachguardians-impact-report-${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
       toast({
-        title: 'Report Downloaded',
-        description: 'Impact report PDF has been downloaded successfully.',
+        title: 'Report Sent!',
+        description: `Impact report has been sent to ${recipientEmail}.`,
       });
     } catch (error) {
-      console.error('Error downloading report:', error);
-=======
-      // Dynamic import of jsPDF to avoid SSR issues
-      const { default: jsPDF } = await import('jspdf');
-      const doc = new jsPDF();
-      
-      // Set up PDF document
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      let yPosition = 20;
-      
-      // Title
-      doc.setFontSize(24);
-      doc.setFont('helvetica', 'bold');
-      doc.text('BeachGuardians Impact Report', pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 10;
-      
-      // Date
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 15;
-      
-      // Key Metrics Section
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Key Metrics', 20, yPosition);
-      yPosition += 10;
-      
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Total Events: ${analyticsData.totalEvents}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Total Volunteers: ${analyticsData.totalVolunteers}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Active Volunteers: ${analyticsData.activeVolunteers}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Total Waste Collected: ${analyticsData.totalWasteCollected.toFixed(1)} kg`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Upcoming Events: ${analyticsData.upcomingEvents}`, 20, yPosition);
-      yPosition += 7;
-      doc.text(`Completed Events: ${analyticsData.completedEvents}`, 20, yPosition);
-      yPosition += 15;
-      
-      // Environmental Impact Section
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Environmental Impact', 20, yPosition);
-      yPosition += 10;
-      
-      // Create a table for environmental impact
-      const impact = analyticsData.environmentalImpact;
-      const tableStartY = yPosition;
-      const col1X = 20;
-      const col2X = 120;
-      const rowHeight = 8;
-      
-      // Table header
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Metric', col1X, yPosition);
-      doc.text('Value', col2X, yPosition);
-      yPosition += rowHeight;
-      
-      // Draw header line
-      doc.setLineWidth(0.5);
-      doc.line(col1X, yPosition - 2, pageWidth - 20, yPosition - 2);
-      yPosition += 3;
-      
-      // Table rows
-      doc.setFont('helvetica', 'normal');
-      const impactData = [
-        ['CO₂ Saved', `${impact.co2Saved.toLocaleString()} kg CO₂e`],
-        ['Trees Saved', `${impact.treesSaved.toLocaleString()} trees`],
-        ['Ocean Life Saved', `${impact.oceanLifeSaved.toLocaleString()} marine animals`],
-        ['Plastic Bottles Recycled', `${impact.plasticBottlesRecycled.toLocaleString()} bottles`],
-        ['Landfill Space Saved', `${impact.landfillSpaceSaved.toFixed(2)} m³`],
-        ['Energy Saved', `${impact.energySaved.toLocaleString()} kWh`],
-      ];
-      
-      impactData.forEach(([metric, value]) => {
-        if (yPosition > pageHeight - 20) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.text(metric, col1X, yPosition);
-        doc.text(value, col2X, yPosition);
-        yPosition += rowHeight;
-      });
-      
-      yPosition += 10;
-      
-      // Waste Collection Trends
-      if (analyticsData.wasteByMonth.length > 0) {
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Waste Collection Trends', 20, yPosition);
-        yPosition += 10;
-        
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        analyticsData.wasteByMonth.forEach((item) => {
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          doc.text(`${item.month}: ${item.amount.toFixed(1)} kg`, 20, yPosition);
-          yPosition += 7;
-        });
-        yPosition += 10;
-      }
-      
-      // Top Volunteers
-      if (analyticsData.topVolunteers.length > 0) {
-        if (yPosition > pageHeight - 40) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Top Performing Volunteers', 20, yPosition);
-        yPosition += 10;
-        
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        analyticsData.topVolunteers.forEach((volunteer, index) => {
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          doc.text(`${index + 1}. ${volunteer.fullName || volunteer.displayName || 'Volunteer'}`, 20, yPosition);
-          yPosition += 6;
-          doc.text(`   Points: ${volunteer.points || 0} | Waste: ${(volunteer.totalWasteContributed || 0).toFixed(1)} kg | Events: ${volunteer.eventsCount || 0}`, 25, yPosition);
-          yPosition += 8;
-        });
-      }
-      
-      // Footer
-      const totalPages = doc.internal.pages.length - 1;
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'italic');
-        doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-        doc.text('BeachGuardians - Protecting Our Coastlines', pageWidth / 2, pageHeight - 5, { align: 'center' });
-      }
-      
-      // Save PDF
-      doc.save(`beachguardians-impact-report-${new Date().toISOString().split('T')[0]}.pdf`);
-      
-      toast({
-        title: 'Report Downloaded',
-        description: 'Impact report has been downloaded as PDF.',
-      });
-    } catch (error) {
-      console.error('Error generating PDF:', error);
->>>>>>> 2d532549c794c85a4c247fbef98c4a5076ca6abd
+      console.error('Error sending report via email:', error);
       toast({
         title: 'Error',
-        description: 'Failed to generate PDF report. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to send report via email. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -529,9 +366,13 @@ export default function ImpactAnalyticsPage() {
               Visualize and analyze the impact of your cleanup efforts.
             </p>
           </div>
-          <Button variant="outline" onClick={handleDownloadReport} disabled={!analyticsData}>
-            <Download className="mr-2 h-4 w-4" />
-            Download PDF Report
+          <Button onClick={() => handleSendReportViaEmail()} disabled={!analyticsData || sendingEmail}>
+            {sendingEmail ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Mail className="mr-2 h-4 w-4" />
+            )}
+            Send via Email
           </Button>
         </div>
 
