@@ -106,6 +106,17 @@ export function EventForm() {
   async function onSubmit(data: EventFormValues) {
     setIsSubmitting(true);
 
+    const currentUser = getAuth().currentUser;
+    if (!currentUser) {
+      toast({
+        title: 'Authentication Required',
+        description: 'You must be signed in to create an event.',
+        variant: 'destructive',
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     // Sanitize locationDetails to remove undefined values
     let sanitizedLocationDetails: EventLocationDetails | undefined = locationDetails ? {
       // Only include address if present
@@ -182,6 +193,9 @@ export function EventForm() {
       longitude: sanitizedLocationDetails?.coordinates?.longitude,
       description: data.description,
       organizer: data.organizer,
+      organizerId: currentUser.uid,
+      organizerName: currentUser.displayName || data.organizer,
+      organizerEmail: currentUser.email || undefined,
       volunteers: [],
       mapImageUrl: (await import('@/lib/event-images')).getRandomEventImage(),
       status: 'upcoming' as const,

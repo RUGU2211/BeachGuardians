@@ -12,6 +12,7 @@ interface ImpactReportData {
   activeVolunteers: number;
   totalWasteCollected: number;
   upcomingEvents: number;
+  ongoingEvents: number;
   completedEvents: number;
   wasteByMonth: { month: string; amount: number }[];
   topVolunteers: Array<{
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
     const totalVolunteers = Number(data.totalVolunteers) || 0;
     const activeVolunteers = Number(data.activeVolunteers) || 0;
     const upcomingEvents = Number(data.upcomingEvents) || 0;
+    const ongoingEvents = Number(data.ongoingEvents) || 0;
     const completedEvents = Number(data.completedEvents) || 0;
 
     // Calculate environmental impact metrics
@@ -125,15 +127,17 @@ export async function POST(req: Request) {
       { label: 'Active Volunteers', value: formatNumber(activeVolunteers) },
       { label: 'Total Waste Collected', value: `${formatNumber(totalWasteCollected.toFixed(1))} kg` },
       { label: 'Upcoming Events', value: formatNumber(upcomingEvents) },
+      { label: 'Ongoing Events', value: formatNumber(ongoingEvents) },
       { label: 'Completed Events', value: formatNumber(completedEvents) },
     ];
 
     const metricsPerRow = 3;
+    const metricRows = Math.ceil(metrics.length / metricsPerRow);
     const metricBoxWidth = (width - 120) / metricsPerRow;
     const metricBoxHeight = 50;
     let metricIndex = 0;
 
-    for (let row = 0; row < 2; row++) {
+    for (let row = 0; row < metricRows; row++) {
       for (let col = 0; col < metricsPerRow; col++) {
         if (metricIndex >= metrics.length) break;
         const metric = metrics[metricIndex];
@@ -173,7 +177,8 @@ export async function POST(req: Request) {
       }
     }
 
-    currentY -= 130;
+    const metricsBlockHeight = metricRows * (metricBoxHeight + 10);
+    currentY -= metricsBlockHeight + 10;
 
     // Environmental Impact Section
     page.drawText('Environmental Impact', {

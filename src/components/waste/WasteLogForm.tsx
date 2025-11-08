@@ -56,16 +56,51 @@ export function WasteLogForm() {
   const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchEvents() {
-      const allEvents = await getAllEvents();
-      console.log('All events fetched:', allEvents);
-      // Filter for events that are not cancelled
-      const filteredEvents = allEvents.filter(event => event.status !== 'cancelled');
-      console.log('Filtered events:', filteredEvents);
-      setActiveEvents(filteredEvents);
+      try {
+        const allEvents = await getAllEvents();
+        let filteredEvents = allEvents.filter(event => event.status !== 'cancelled');
+
+        if (userProfile?.role === 'admin') {
+          const adminUid = userProfile.uid;
+          const normalizedAdminName = userProfile.fullName?.trim().toLowerCase() || '';
+          filteredEvents = filteredEvents.filter(event => {
+            const eventData = event as unknown as { organizerId?: string; organizer?: string; organizerName?: string };
+            if (eventData.organizerId && eventData.organizerId === adminUid) {
+              return true;
+            }
+
+            if (!eventData.organizerId && normalizedAdminName) {
+              const organizer = eventData.organizer?.toLowerCase();
+              const organizerName = eventData.organizerName?.toLowerCase();
+              if (organizer === normalizedAdminName || organizerName === normalizedAdminName) {
+                return true;
+              }
+            }
+
+            return false;
+          });
+        }
+
+        if (isMounted) {
+          setActiveEvents(filteredEvents);
+        }
+      } catch (error) {
+        console.error('Error fetching events for waste logging:', error);
+        if (isMounted) {
+          setActiveEvents([]);
+        }
+      }
     }
+
     fetchEvents();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userProfile?.uid, userProfile?.role, userProfile?.fullName]);
   
   const form = useForm<WasteLogFormValues>({
     resolver: zodResolver(wasteLogFormSchema),
@@ -87,6 +122,12 @@ export function WasteLogForm() {
     async function checkRegistration() {
       if (!userProfile || !selectedEventId) {
         setIsRegisteredForSelected(null);
+        setVerificationStatus(null);
+        return;
+      }
+
+      if (userProfile.role === 'admin') {
+        setIsRegisteredForSelected(true);
         setVerificationStatus(null);
         return;
       }
@@ -218,10 +259,14 @@ export function WasteLogForm() {
       toast({ title: "Authentication Required", description: "Please log in again to log waste.", variant: "destructive" });
       return;
     }
-    const registered = await checkUserRegistration(data.eventId, authUid);
-    if (!registered) {
-      toast({ title: "Registration Required", description: "Please register for this event before logging waste.", variant: 'destructive' });
-      return;
+    const isAdmin = userProfile.role === 'admin';
+    let registered = true;
+    if (!isAdmin) {
+      registered = await checkUserRegistration(data.eventId, authUid);
+      if (!registered) {
+        toast({ title: "Registration Required", description: "Please register for this event before logging waste.", variant: 'destructive' });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -310,11 +355,18 @@ export function WasteLogForm() {
         adminName: data.adminName || undefined,
       });
 
-      const pointsToAward = Math.round(data.weightKg * 10);
-      toast({
-        title: "Waste Logged!",
-        description: `You've successfully logged ${data.weightKg}kg of ${finalWasteType} and earned ${pointsToAward} points!`,
-      });
+      if (isAdmin) {
+        toast({
+          title: "Waste Logged!",
+          description: `Recorded ${data.weightKg}kg of ${finalWasteType} for this event. Volunteers will see updated points automatically.`,
+        });
+      } else {
+        const pointsToAward = Math.round(data.weightKg * 10);
+        toast({
+          title: "Waste Logged!",
+          description: `You've successfully logged ${data.weightKg}kg of ${finalWasteType} and earned ${pointsToAward} points!`,
+        });
+      }
       form.reset();
     } catch (error) {
       console.error('Failed to log waste:', error);

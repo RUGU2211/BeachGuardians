@@ -46,13 +46,21 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // Send login notification email
-      const { subject, html } = getLoginNotificationTemplate(user.displayName || 'User', 'unknown', 'unknown');
-      await sendEmailFromClient({
-        to: user.email!,
-        subject,
-        html,
-      });
+      // Send login notification email (non-blocking)
+      try {
+        const { subject, html } = getLoginNotificationTemplate(user.displayName || 'User', 'unknown', 'unknown');
+        await sendEmailFromClient({
+          to: user.email!,
+          subject,
+          html,
+        });
+      } catch (emailError) {
+        console.warn('Login notification email failed:', emailError);
+        toast({
+          title: 'Login Email Not Sent',
+          description: 'Signed in successfully, but we could not send the notification email. Please verify email settings.',
+        });
+      }
 
       toast({
         title: 'Login Successful',

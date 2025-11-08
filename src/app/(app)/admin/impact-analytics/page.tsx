@@ -33,6 +33,7 @@ interface AnalyticsData {
   totalWasteCollected: number;
   activeVolunteers: number;
   upcomingEvents: number;
+  ongoingEvents: number;
   completedEvents: number;
   wasteByMonth: { month: string; amount: number }[];
   topVolunteers: TopVolunteer[];
@@ -60,15 +61,21 @@ export default function ImpactAnalyticsPage() {
     if (!authLoading && userProfile?.role === 'admin' && userProfile?.isAdminVerified) {
       const adminUid = userProfile.uid;
       
-      // Real-time listener for events - filter by admin's events only
+      // Real-time listener for events (filtering handled during analytics calculation)
       eventsUnsubscribe = onSnapshot(
-        query(collection(db, 'events'), where('organizerId', '==', adminUid)),
+        collection(db, 'events'),
         (snapshot) => {
           eventsRef.current = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
           })) as Event[];
-          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current, adminUid);
+          calculateAndUpdateAnalytics(
+            eventsRef.current,
+            usersRef.current,
+            wasteLogsRef.current,
+            adminUid,
+            userProfile?.fullName ?? null
+          );
         },
         (error) => {
           console.error('Error listening to events:', error);
@@ -89,7 +96,13 @@ export default function ImpactAnalyticsPage() {
             uid: doc.id,
             ...doc.data(),
           })) as UserProfile[];
-          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current, adminUid);
+          calculateAndUpdateAnalytics(
+            eventsRef.current,
+            usersRef.current,
+            wasteLogsRef.current,
+            adminUid,
+            userProfile?.fullName ?? null
+          );
         },
         (error) => {
           console.error('Error listening to users:', error);
@@ -102,7 +115,7 @@ export default function ImpactAnalyticsPage() {
         }
       );
 
-      // Real-time listener for waste logs - filter by admin's events only
+      // Real-time listener for waste logs (filtering handled in analytics calculation)
       wasteLogsUnsubscribe = onSnapshot(
         collection(db, 'wasteLogs'),
         (snapshot) => {
@@ -110,12 +123,17 @@ export default function ImpactAnalyticsPage() {
             id: doc.id,
             ...doc.data(),
           })) as WasteLog[];
-          
-          // Filter waste logs to only include those from admin's events
-          const adminEventIds = new Set(eventsRef.current.map(e => e.id));
-          wasteLogsRef.current = allWasteLogs.filter(log => adminEventIds.has(log.eventId));
-          
-          calculateAndUpdateAnalytics(eventsRef.current, usersRef.current, wasteLogsRef.current, adminUid);
+
+          // Store all waste logs; calculateAndUpdateAnalytics applies admin filtering
+          wasteLogsRef.current = allWasteLogs;
+
+          calculateAndUpdateAnalytics(
+            eventsRef.current,
+            usersRef.current,
+            wasteLogsRef.current,
+            adminUid,
+            userProfile?.fullName ?? null
+          );
         },
         (error) => {
           console.error('Error listening to waste logs:', error);
@@ -139,52 +157,102 @@ export default function ImpactAnalyticsPage() {
       if (wasteLogsUnsubscribe) wasteLogsUnsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, userProfile?.role, userProfile?.isAdminVerified]);
+  }, [authLoading, userProfile?.role, userProfile?.isAdminVerified, userProfile?.fullName]);
 
-  const calculateAndUpdateAnalytics = (events: Event[], users: UserProfile[], wasteLogs: WasteLog[], adminUid?: string) => {
+  const calculateAndUpdateAnalytics = (
+    events: Event[],
+    users: UserProfile[],
+    wasteLogs: WasteLog[],
+    adminUid?: string,
+    adminName?: string | null
+  ) => {
     try {
       const now = new Date();
+
+      const parseDateTime = (dateValue: any, timeValue?: string): Date | null => {
+        if (!dateValue) return null;
+        let baseDate: Date;
+
+        if (typeof dateValue === 'string') {
+          baseDate = parseISO(dateValue);
+        } else if (dateValue instanceof Date) {
+          baseDate = dateValue;
+        } else if (typeof dateValue === 'object' && typeof (dateValue as any).toDate === 'function') {
+          baseDate = (dateValue as any).toDate();
+        } else {
+          baseDate = new Date(dateValue);
+        }
+
+        if (isNaN(baseDate.getTime())) {
+          return null;
+        }
+
+        const dateWithTime = new Date(baseDate);
+        if (timeValue && /^\d{1,2}:\d{2}$/.test(timeValue)) {
+          const [hours, minutes] = timeValue.split(':').map(Number);
+          dateWithTime.setHours(hours ?? 0, minutes ?? 0, 0, 0);
+        }
+
+        return dateWithTime;
+      };
       
       // Filter events to only include admin's events (if adminUid provided)
-      const adminEvents = adminUid 
-        ? events.filter(e => e.organizerId === adminUid)
-        : events;
-      
-      // Filter waste logs to only include those from admin's events
-      const adminEventIds = new Set(adminEvents.map(e => e.id));
-      const adminWasteLogs = adminUid
-        ? wasteLogs.filter(log => adminEventIds.has(log.eventId))
-        : wasteLogs;
-      
-      // Get volunteers who participated in admin's events
-      const adminEventVolunteerIds = new Set<string>();
-      adminEvents.forEach(e => {
-        (e.volunteers || []).forEach((uid: string) => adminEventVolunteerIds.add(uid));
+      // Aggregate analytics across all events
+      const relevantEvents = events;
+
+      // Include all waste logs related to known events (or keep if eventId missing for completeness)
+      const eventIds = new Set(relevantEvents.map(e => e.id));
+      const relevantWasteLogs = wasteLogs.filter(log => {
+        if (!log.eventId) return true;
+        return eventIds.has(log.eventId);
       });
-      const adminVolunteers = adminUid
-        ? users.filter(u => adminEventVolunteerIds.has(u.uid))
-        : users.filter(u => u.role === 'volunteer');
+
+      // Collect volunteer IDs from events and waste logs
+      const volunteerIds = new Set<string>();
+      relevantEvents.forEach(e => {
+        (e.volunteers || []).forEach((uid: string) => volunteerIds.add(uid));
+      });
+      relevantWasteLogs.forEach(log => {
+        if (log.userId) volunteerIds.add(log.userId);
+        if (log.loggedBy) volunteerIds.add(log.loggedBy);
+      });
+
+      const relevantVolunteers = users.filter(u => {
+        if (u.role !== 'volunteer') return false;
+        if (volunteerIds.size === 0) return true;
+        return volunteerIds.has(u.uid);
+      });
       
-      // Calculate basic metrics (only from admin's events)
-      const totalEvents = adminEvents.length;
-      const totalVolunteers = adminVolunteers.length;
-      const totalWasteCollected = adminWasteLogs.reduce((sum, log) => sum + (log.weightKg || 0), 0);
-      const activeVolunteers = adminVolunteers.filter(u => u.eventsAttended && u.eventsAttended.length > 0).length;
+      // Calculate basic metrics
+      const totalEvents = relevantEvents.length;
+      const totalVolunteers = relevantVolunteers.length;
+      const totalWasteCollected = relevantWasteLogs.reduce((sum, log) => sum + (log.weightKg || 0), 0);
+      const activeVolunteers = relevantVolunteers.filter(u => u.eventsAttended && u.eventsAttended.length > 0).length;
       
-      // Calculate event status (only admin's events)
-      const upcomingEvents = adminEvents.filter(e => {
-        const eventDate = e.date ? (typeof e.date === 'string' ? parseISO(e.date) : new Date(e.date)) : null;
-        return eventDate && eventDate > now;
-      }).length;
-      
-      const completedEvents = adminEvents.filter(e => {
-        const eventDate = e.date ? (typeof e.date === 'string' ? parseISO(e.date) : new Date(e.date)) : null;
-        return eventDate && eventDate < now;
+      // Calculate event status
+      const upcomingEvents = relevantEvents.filter(e => {
+        const startDate = parseDateTime(e.startDate ?? e.date, e.startTime);
+        return startDate && startDate > now;
       }).length;
 
-      // Calculate waste by month with proper date handling (only from admin's events)
+      const ongoingEvents = relevantEvents.filter(e => {
+        const startDate = parseDateTime(e.startDate ?? e.date, e.startTime);
+        const endDate = parseDateTime(e.endDate ?? e.date, e.endTime);
+        if (!startDate) return false;
+        const normalizedEndDate = endDate ?? startDate;
+        return startDate <= now && now <= normalizedEndDate;
+      }).length;
+      
+      const completedEvents = relevantEvents.filter(e => {
+        const endDate = parseDateTime(e.endDate ?? e.date, e.endTime);
+        const fallbackDate = parseDateTime(e.startDate ?? e.date, e.startTime);
+        const comparisonDate = endDate ?? fallbackDate;
+        return comparisonDate && comparisonDate < now;
+      }).length;
+
+      // Calculate waste by month with proper date handling
       const wasteByMonth: Record<string, number> = {};
-      adminWasteLogs.forEach(log => {
+      relevantWasteLogs.forEach(log => {
         if (!log.date || !log.weightKg) return;
         
         try {
@@ -222,11 +290,10 @@ export default function ImpactAnalyticsPage() {
           }
         });
 
-      // Get top volunteers sorted by points and contributions (only from admin's events)
-      // Calculate total waste contributed by each volunteer in admin's events
-      const volunteerContributions = adminVolunteers.map(volunteer => {
-        const volunteerWasteLogs = adminWasteLogs.filter(
-          log => (log.userId === volunteer.uid || log.loggedBy === volunteer.uid) && adminEventIds.has(log.eventId)
+      // Get top volunteers sorted by points and contributions
+      const volunteerContributions = relevantVolunteers.map(volunteer => {
+        const volunteerWasteLogs = relevantWasteLogs.filter(
+          log => (log.userId === volunteer.uid || log.loggedBy === volunteer.uid)
         );
         const totalWasteContributed = volunteerWasteLogs.reduce(
           (sum, log) => sum + (log.weightKg || 0), 
@@ -273,6 +340,7 @@ export default function ImpactAnalyticsPage() {
         totalWasteCollected,
         activeVolunteers,
         upcomingEvents,
+        ongoingEvents,
         completedEvents,
         wasteByMonth: wasteByMonthArray,
         topVolunteers,
@@ -493,6 +561,10 @@ export default function ImpactAnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Upcoming</span>
                   <span className="text-lg font-bold text-blue-600">{analyticsData?.upcomingEvents || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Ongoing</span>
+                  <span className="text-lg font-bold text-amber-600">{analyticsData?.ongoingEvents || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Completed</span>
